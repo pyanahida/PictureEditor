@@ -106,13 +106,13 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .control-label {
   font-size: 0.9rem;
   color: #555;
-  min-width: 5rem;
+  min-width: 6rem;
 }
 
 .control-input {
@@ -133,6 +133,7 @@ body {
 .button-row {
   display: flex;
   gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 .action-btn {
