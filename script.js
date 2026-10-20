@@ -37,8 +37,8 @@
 
   let originalImage = null;
   let originalFile  = null;
-  let sourceObjectUrl = null;
-  let processedObjectUrl = null;
+  let rawDataUrl    = null;
+  let processedDataUrl = null;
   let latestRequestId = 0;
 
   let sharedCanvas = null;
@@ -249,53 +249,52 @@
     return sharedCanvas;
   }
 
-  function computePreview(requestId) {
-    if (!originalImage) return;
-    const nw = originalImage.naturalWidth;
-    const nh = originalImage.naturalHeight;
-    if (!nw || !nh) return;
-
-    const canvas = getSharedCanvas(nw, nh);
-    sharedCtx.clearRect(0, 0, nw, nh);
-    sharedCtx.drawImage(originalImage, 0, 0);
-
-    const values = readValues();
-    if (!isIdentity(values)) {
-      const imageData = sharedCtx.getImageData(0, 0, nw, nh);
-      processPixels(imageData.data, nw, nh, values);
-      sharedCtx.putImageData(imageData, 0, 0);
-    }
-
-    if (requestId !== latestRequestId) return;
-
-    canvas.toBlob(function(blob) {
-      if (requestId !== latestRequestId || !blob) return;
-      if (processedObjectUrl) URL.revokeObjectURL(processedObjectUrl);
-      processedObjectUrl = URL.createObjectURL(blob);
-      previewImg.src = processedObjectUrl;
-      previewImg.classList.remove('hidden');
-      placeholder.classList.add('hidden');
-      previewBox.classList.add('active');
-      downloadBtn.disabled = false;
-    }, 'image/png');
-  }
-
   function applyNow() {
     if (!originalImage) return;
-    latestRequestId++;
-    computePreview(latestRequestId);
+    
+    // Safety timeout for UI feedback (optional but good for large images)
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'processing...';
+
+    // Use setTimeout to let the UI update before heavy synchronous processing
+    setTimeout(() => {
+      try {
+        const nw = originalImage.naturalWidth;
+        const nh = originalImage.naturalHeight;
+        if (!nw || !nh) return;
+
+        const canvas = getSharedCanvas(nw, nh);
+        sharedCtx.clearRect(0, 0, nw, nh);
+        sharedCtx.drawImage(originalImage, 0, 0);
+
+        const values = readValues();
+        if (!isIdentity(values)) {
+          const imageData = sharedCtx.getImageData(0, 0, nw, nh);
+          processPixels(imageData.data, nw, nh, values);
+          sharedCtx.putImageData(imageData, 0, 0);
+        }
+
+        processedDataUrl = canvas.toDataURL('image/png');
+        
+        previewImg.src = processedDataUrl;
+        previewImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        previewBox.classList.add('active');
+        downloadBtn.disabled = false;
+      } catch (err) {
+        console.error(err);
+        filenameEl.textContent = 'processing error';
+      } finally {
+        applyBtn.disabled = false;
+        applyBtn.textContent = 'apply';
+      }
+    }, 10);
   }
 
   // ---- file handling ----
   function clearPreview() {
-    if (sourceObjectUrl) {
-      URL.revokeObjectURL(sourceObjectUrl);
-      sourceObjectUrl = null;
-    }
-    if (processedObjectUrl) {
-      URL.revokeObjectURL(processedObjectUrl);
-      processedObjectUrl = null;
-    }
+    rawDataUrl = null;
+    processedDataUrl = null;
     previewImg.removeAttribute('src');
     previewImg.classList.add('hidden');
     placeholder.classList.remove('hidden');
@@ -307,41 +306,6 @@
     downloadBtn.disabled = true;
   }
 
-  function showImage(file) {
-    if (sourceObjectUrl) {
-      URL.revokeObjectURL(sourceObjectUrl);
-      sourceObjectUrl = null;
-    }
-    if (processedObjectUrl) {
-      URL.revokeObjectURL(processedObjectUrl);
-      processedObjectUrl = null;
-    }
-
-    sourceObjectUrl = URL.createObjectURL(file);
-    originalFile = file;
-
-    const name = file.name;
-    filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
-
-    // immediately show the raw image
-    previewImg.src = sourceObjectUrl;
-    previewImg.classList.remove('hidden');
-    placeholder.classList.add('hidden');
-    previewBox.classList.add('active');
-
-    const img = new Image();
-    img.onload = function() {
-      originalImage = img;
-      applyBtn.disabled = false;
-      downloadBtn.disabled = true;
-    };
-    img.onerror = function() {
-      clearPreview();
-      filenameEl.textContent = 'failed to load image';
-    };
-    img.src = sourceObjectUrl;
-  }
-
   function handleFileChange(e) {
     const files = e.target.files;
     if (!files || files.length === 0) {
@@ -349,29 +313,66 @@
       return;
     }
     const file = files[0];
+
     if (file.type === 'image/svg+xml') {
       clearPreview();
       filenameEl.textContent = 'svg not supported';
       fileInput.value = '';
       return;
     }
-    if (file.type.startsWith('image/')) {
-      showImage(file);
-    } else {
+    if (!file.type.startsWith('image/')) {
       clearPreview();
       filenameEl.textContent = 'not an image';
       fileInput.value = '';
+      return;
     }
+
+    originalFile = file;
+    const name = file.name;
+    filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
+
+    // Use FileReader to create a stable data URL (avoids Blob URL garbage collection issues on mobile)
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      rawDataUrl = evt.target.result;
+      
+      // Immediately show the raw image
+      previewImg.src = rawDataUrl;
+      previewImg.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+      previewBox.classList.add('active');
+
+      // Load into an Image object for canvas processing
+      const img = new Image();
+      img.onload = function() {
+        originalImage = img;
+        applyBtn.disabled = false;
+        downloadBtn.disabled = true;
+        processedDataUrl = null;
+      };
+      img.onerror = function() {
+        clearPreview();
+        filenameEl.textContent = 'failed to load image';
+      };
+      img.src = rawDataUrl;
+    };
+    reader.onerror = function() {
+      clearPreview();
+      filenameEl.textContent = 'failed to read file';
+    };
+    reader.readAsDataURL(file);
   }
 
   // ---- download ----
   function downloadImage() {
-    if (!processedObjectUrl) return;
+    if (!processedDataUrl) return;
+    
     const base = (originalFile && originalFile.name)
       ? originalFile.name.replace(/\.[^/.]+$/, '')
       : 'processed';
+      
     const a = document.createElement('a');
-    a.href = processedObjectUrl;
+    a.href = processedDataUrl;
     a.download = base + '-edited.png';
     document.body.appendChild(a);
     a.click();
@@ -385,11 +386,6 @@
   fileInput.addEventListener('change', handleFileChange);
   applyBtn.addEventListener('click', applyNow);
   downloadBtn.addEventListener('click', downloadImage);
-
-  window.addEventListener('beforeunload', function() {
-    if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
-    if (processedObjectUrl) URL.revokeObjectURL(processedObjectUrl);
-  });
 
   clearPreview();
 })();
