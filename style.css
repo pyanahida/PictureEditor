@@ -1,4 +1,3 @@
-/* style.css */
 * {
   margin: 0;
   padding: 0;
@@ -96,4 +95,66 @@ body {
 
 .filename:empty {
   display: none;
+}
+
+/* controls */
+.controls {
+  margin-top: 1.5rem;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.control-label {
+  font-size: 0.9rem;
+  color: #555;
+  min-width: 5rem;
+}
+
+.control-input {
+  flex: 1;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.9rem;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+
+.control-input:focus {
+  border-color: #999;
+}
+
+.button-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  background: #111;
+  color: #fff;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: #2a2a2a;
+}
+
+.action-btn:disabled {
+  background: #ddd;
+  color: #999;
+  cursor: not-allowed;
 }
