@@ -1,21 +1,19 @@
 (function() {
   'use strict';
 
-  // ---- declarative control config ----
   const CONTROLS = [
-    { id: 'exposure',    label: 'exposure' },
-    { id: 'brightness',  label: 'brightness' },
-    { id: 'contrast',    label: 'contrast' },
-    { id: 'clarity',     label: 'clarity' },
-    { id: 'highlights',  label: 'highlights' },
-    { id: 'shadows',     label: 'shadows' },
-    { id: 'whites',      label: 'whites' },
-    { id: 'blacks',      label: 'blacks' },
-    { id: 'saturation',  label: 'saturation' },
-    { id: 'vibrance',    label: 'vibrance' }
+    { id: 'exposure',   label: 'exposure' },
+    { id: 'brightness', label: 'brightness' },
+    { id: 'contrast',   label: 'contrast' },
+    { id: 'clarity',    label: 'clarity' },
+    { id: 'highlights', label: 'highlights' },
+    { id: 'shadows',    label: 'shadows' },
+    { id: 'whites',     label: 'whites' },
+    { id: 'blacks',     label: 'blacks' },
+    { id: 'saturation', label: 'saturation' },
+    { id: 'vibrance',   label: 'vibrance' }
   ];
 
-  // ---- tuning profile (all magic numbers live here) ----
   const PROFILE = {
     exposure:   { pos: 1.5, neg: 2.0 },
     brightness: { scale: 80 },
@@ -28,10 +26,6 @@
     vibrance:   { scale: 0.8 }
   };
 
-  const DEBOUNCE_MS = 180;
-  const PREVIEW_MAX_DIM = 900;
-
-  // ---- dom refs ----
   const fileInput   = document.getElementById('file-input');
   const previewImg  = document.getElementById('preview-img');
   const placeholder = document.getElementById('placeholder');
@@ -41,23 +35,17 @@
   const downloadBtn = document.getElementById('download-btn');
   const controlsEl  = document.getElementById('controls');
 
-  // ---- state ----
-  let originalImage = null;        // HTMLImageElement, read-only base
-  let originalFile  = null;        // File for name/format
-  let sourceObjectUrl = null;      // blob url for originalImage
-  let processedObjectUrl = null;   // blob url for preview + download
-  let debounceTimer = null;
+  let originalImage = null;
+  let originalFile  = null;
+  let sourceObjectUrl = null;
+  let processedObjectUrl = null;
   let latestRequestId = 0;
-  let isProcessing = false;
 
-  // reusable canvas
   let sharedCanvas = null;
   let sharedCtx = null;
 
   // ---- build controls ----
   const inputs = {};
-  const valueLabels = {};
-
   CONTROLS.forEach(cfg => {
     const row = document.createElement('div');
     row.className = 'control-row';
@@ -80,7 +68,6 @@
     const valueEl = document.createElement('span');
     valueEl.className = 'control-value';
     valueEl.textContent = '0';
-
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
     });
@@ -91,10 +78,8 @@
     controlsEl.appendChild(row);
 
     inputs[cfg.id] = slider;
-    valueLabels[cfg.id] = valueEl;
   });
 
-  // ---- helpers ----
   function readValues() {
     const out = {};
     CONTROLS.forEach(cfg => {
@@ -118,13 +103,13 @@
     return Math.min(255, Math.max(0, c * 255));
   }
 
-  // ---- pipeline: pure-ish functions ----
+  // ---- pipeline ----
   function processPixels(data, w, h, values) {
     const expF = values.exposure >= 0
       ? 1 + (values.exposure / 100) * PROFILE.exposure.pos
       : 1 / (1 + (-values.exposure / 100) * PROFILE.exposure.neg);
 
-    const brightOff = (values.brightness / 100) * PROFILE.brightness.scale;
+    const brightOff = (values.brightness / 100) * PROFILE.brightness.scale / 255;
 
     const contrastF = values.contrast >= 0
       ? 1 + (values.contrast / 100) * PROFILE.contrast.pos
@@ -154,40 +139,31 @@
 
     const vibAmount = (values.vibrance / 100) * PROFILE.vibrance.scale;
 
-    // pass 1: tone in linear space
     for (let i = 0; i < data.length; i += 4) {
       let r = srgbToLinear(data[i]);
       let g = srgbToLinear(data[i + 1]);
       let b = srgbToLinear(data[i + 2]);
 
-      // exposure (multiplicative in linear)
       r *= expF; g *= expF; b *= expF;
 
-      // brightness (additive in linear, scaled)
-      const bOff = brightOff / 255;
-      r += bOff; g += bOff; b += bOff;
+      r += brightOff; g += brightOff; b += brightOff;
 
-      // contrast around 0.5 linear pivot
       r = (r - 0.5) * contrastF + 0.5;
       g = (g - 0.5) * contrastF + 0.5;
       b = (b - 0.5) * contrastF + 0.5;
 
-      // back to srgb for zone-based curves
       let rr = linearToSrgb(r);
       let gg = linearToSrgb(g);
       let bb = linearToSrgb(b);
 
       let luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
 
-      // highlights (smooth-ish weight on bright side)
       if (luma > 128) {
         const weight = (luma - 128) / 127;
         rr += (rr * (hlF - 1)) * weight;
         gg += (gg * (hlF - 1)) * weight;
         bb += (bb * (hlF - 1)) * weight;
       }
-
-      // shadows (smooth-ish weight on dark side)
       if (luma < 128) {
         const weight = (128 - luma) / 128;
         rr += (rr * (shF - 1)) * weight;
@@ -197,16 +173,13 @@
 
       luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
 
-      // whites (top end, soft pivot)
       if (luma > wP.pivot) {
         const t = Math.min(1, (luma - wP.pivot) / wP.span);
-        const weight = t * t * (3 - 2 * t); // smoothstep
+        const weight = t * t * (3 - 2 * t);
         rr += (rr * (whF - 1)) * weight;
         gg += (gg * (whF - 1)) * weight;
         bb += (bb * (whF - 1)) * weight;
       }
-
-      // blacks (bottom end, soft pivot)
       if (luma < bP.pivot) {
         const t = Math.min(1, (bP.pivot - luma) / bP.span);
         const weight = t * t * (3 - 2 * t);
@@ -220,12 +193,9 @@
       data[i + 2] = Math.min(255, Math.max(0, bb));
     }
 
-    // pass 2: clarity = unsharp mask (3x3 laplacian)
     if (values.clarity !== 0) {
       applyClarity(data, w, h, values.clarity);
     }
-
-    // pass 3: single saturation+vibrance pass in HSL-ish
     if (values.saturation !== 0 || values.vibrance !== 0) {
       applySaturation(data, satF, vibAmount);
     }
@@ -234,7 +204,6 @@
   function applyClarity(data, w, h, amount) {
     const src = new Uint8ClampedArray(data);
     const strength = (amount / 100) * 0.5;
-    // skip edges for simplicity; border stays unchanged
     for (let y = 1; y < h - 1; y++) {
       const rowBase = y * w;
       for (let x = 1; x < w - 1; x++) {
@@ -259,11 +228,8 @@
       const maxC = Math.max(r, g, b);
       const minC = Math.min(r, g, b);
       const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
-
-      // combined factor: base saturation then vibrance protection for low-sat pixels
       const vibFactor = 1 + vibAmount * Math.max(0, 1 - sat);
       const combined = satF * vibFactor;
-
       data[i]     = Math.min(255, Math.max(0, gray + (r - gray) * combined));
       data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * combined));
       data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * combined));
@@ -283,67 +249,41 @@
     return sharedCanvas;
   }
 
-  function computePreview(maxDim, requestId) {
+  function computePreview(requestId) {
     if (!originalImage) return;
-
     const nw = originalImage.naturalWidth;
     const nh = originalImage.naturalHeight;
     if (!nw || !nh) return;
 
-    const scale = Math.min(1, maxDim / Math.max(nw, nh));
-    const w = Math.max(1, Math.round(nw * scale));
-    const h = Math.max(1, Math.round(nh * scale));
+    const canvas = getSharedCanvas(nw, nh);
+    sharedCtx.clearRect(0, 0, nw, nh);
+    sharedCtx.drawImage(originalImage, 0, 0);
 
-    const canvas = getSharedCanvas(w, h);
-    sharedCtx.drawImage(originalImage, 0, 0, w, h);
-    const imageData = sharedCtx.getImageData(0, 0, w, h);
     const values = readValues();
-
     if (!isIdentity(values)) {
-      processPixels(imageData.data, w, h, values);
+      const imageData = sharedCtx.getImageData(0, 0, nw, nh);
+      processPixels(imageData.data, nw, nh, values);
       sharedCtx.putImageData(imageData, 0, 0);
     }
 
     if (requestId !== latestRequestId) return;
 
-    if (maxDim === Infinity) {
-      isProcessing = true;
-      canvas.toBlob(blob => {
-        isProcessing = false;
-        if (requestId !== latestRequestId) return;
-        if (processedObjectUrl) URL.revokeObjectURL(processedObjectUrl);
-        processedObjectUrl = URL.createObjectURL(blob);
-        previewImg.src = processedObjectUrl;
-        downloadBtn.disabled = false;
-      }, 'image/png');
-    } else {
-      previewImg.src = canvas.toDataURL('image/png');
-      // full-res download only after explicit apply; keep disabled here
-    }
-  }
-
-  function scheduleApply() {
-    if (!originalImage) return;
-    latestRequestId++;
-    const reqId = latestRequestId;
-
-    clearTimeout(debounceTimer);
-
-    // immediate low-res feedback
-    computePreview(PREVIEW_MAX_DIM, reqId);
-
-    // debounced full-res
-    debounceTimer = setTimeout(() => {
-      if (reqId !== latestRequestId) return;
-      computePreview(Infinity, reqId);
-    }, DEBOUNCE_MS);
+    canvas.toBlob(function(blob) {
+      if (requestId !== latestRequestId || !blob) return;
+      if (processedObjectUrl) URL.revokeObjectURL(processedObjectUrl);
+      processedObjectUrl = URL.createObjectURL(blob);
+      previewImg.src = processedObjectUrl;
+      previewImg.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+      previewBox.classList.add('active');
+      downloadBtn.disabled = false;
+    }, 'image/png');
   }
 
   function applyNow() {
     if (!originalImage) return;
-    clearTimeout(debounceTimer);
     latestRequestId++;
-    computePreview(Infinity, latestRequestId);
+    computePreview(latestRequestId);
   }
 
   // ---- file handling ----
@@ -356,7 +296,7 @@
       URL.revokeObjectURL(processedObjectUrl);
       processedObjectUrl = null;
     }
-    previewImg.src = '';
+    previewImg.removeAttribute('src');
     previewImg.classList.add('hidden');
     placeholder.classList.remove('hidden');
     previewBox.classList.remove('active');
@@ -365,13 +305,16 @@
     originalFile = null;
     applyBtn.disabled = true;
     downloadBtn.disabled = true;
-    isProcessing = false;
   }
 
   function showImage(file) {
     if (sourceObjectUrl) {
       URL.revokeObjectURL(sourceObjectUrl);
       sourceObjectUrl = null;
+    }
+    if (processedObjectUrl) {
+      URL.revokeObjectURL(processedObjectUrl);
+      processedObjectUrl = null;
     }
 
     sourceObjectUrl = URL.createObjectURL(file);
@@ -380,33 +323,23 @@
     const name = file.name;
     filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
 
+    // immediately show the raw image
+    previewImg.src = sourceObjectUrl;
+    previewImg.classList.remove('hidden');
+    placeholder.classList.add('hidden');
+    previewBox.classList.add('active');
+
     const img = new Image();
     img.onload = function() {
-      if (sourceObjectUrl) {
-        URL.revokeObjectURL(sourceObjectUrl);
-        sourceObjectUrl = null;
-      }
-      // note: img keeps the decoded bitmap in memory; we no longer need the url
       originalImage = img;
-      previewImg.src = sourceObjectUrl || img.src;
-      previewImg.classList.remove('hidden');
-      placeholder.classList.add('hidden');
-      previewBox.classList.add('active');
       applyBtn.disabled = false;
       downloadBtn.disabled = true;
-      processedObjectUrl = null;
     };
     img.onerror = function() {
       clearPreview();
       filenameEl.textContent = 'failed to load image';
     };
     img.src = sourceObjectUrl;
-
-    // show the raw image immediately while decoding
-    previewImg.src = sourceObjectUrl;
-    previewImg.classList.remove('hidden');
-    placeholder.classList.add('hidden');
-    previewBox.classList.add('active');
   }
 
   function handleFileChange(e) {
@@ -416,14 +349,13 @@
       return;
     }
     const file = files[0];
+    if (file.type === 'image/svg+xml') {
+      clearPreview();
+      filenameEl.textContent = 'svg not supported';
+      fileInput.value = '';
+      return;
+    }
     if (file.type.startsWith('image/')) {
-      // guard against svg for now (raster only)
-      if (file.type === 'image/svg+xml') {
-        clearPreview();
-        filenameEl.textContent = 'svg not supported';
-        fileInput.value = '';
-        return;
-      }
       showImage(file);
     } else {
       clearPreview();
@@ -435,14 +367,15 @@
   // ---- download ----
   function downloadImage() {
     if (!processedObjectUrl) return;
-
-    const base = (originalFile && originalFile.name
+    const base = (originalFile && originalFile.name)
       ? originalFile.name.replace(/\.[^/.]+$/, '')
-      : 'processed');
+      : 'processed';
     const a = document.createElement('a');
     a.href = processedObjectUrl;
-    a.download = `${base}-edited.png`;
+    a.download = base + '-edited.png';
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
   }
 
   // ---- events ----
