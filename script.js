@@ -1,271 +1,429 @@
 (function() {
-  const fileInput = document.getElementById('file-input');
-  const previewImg = document.getElementById('preview-img');
+  'use strict';
+
+  // ---- declarative control config ----
+  const CONTROLS = [
+    { id: 'exposure',    label: 'exposure' },
+    { id: 'brightness',  label: 'brightness' },
+    { id: 'contrast',    label: 'contrast' },
+    { id: 'clarity',     label: 'clarity' },
+    { id: 'highlights',  label: 'highlights' },
+    { id: 'shadows',     label: 'shadows' },
+    { id: 'whites',      label: 'whites' },
+    { id: 'blacks',      label: 'blacks' },
+    { id: 'saturation',  label: 'saturation' },
+    { id: 'vibrance',    label: 'vibrance' }
+  ];
+
+  // ---- tuning profile (all magic numbers live here) ----
+  const PROFILE = {
+    exposure:   { pos: 1.5, neg: 2.0 },
+    brightness: { scale: 80 },
+    contrast:   { pos: 1.2, neg: 0.8 },
+    highlights: { pos: 0.9, neg: 0.7 },
+    shadows:    { pos: 0.9, neg: 0.7 },
+    whites:     { pos: 0.8, neg: 0.6, pivot: 200, span: 55 },
+    blacks:     { pos: 0.8, neg: 0.6, pivot: 55,  span: 55 },
+    saturation: { pos: 1.5, neg: 0.8 },
+    vibrance:   { scale: 0.8 }
+  };
+
+  const DEBOUNCE_MS = 180;
+  const PREVIEW_MAX_DIM = 900;
+
+  // ---- dom refs ----
+  const fileInput   = document.getElementById('file-input');
+  const previewImg  = document.getElementById('preview-img');
   const placeholder = document.getElementById('placeholder');
-  const previewBox = document.getElementById('preview-box');
-  const filenameEl = document.getElementById('filename');
-  const applyBtn = document.getElementById('apply-btn');
+  const previewBox  = document.getElementById('preview-box');
+  const filenameEl  = document.getElementById('filename');
+  const applyBtn    = document.getElementById('apply-btn');
   const downloadBtn = document.getElementById('download-btn');
+  const controlsEl  = document.getElementById('controls');
 
-  const exposureInput = document.getElementById('exposure-input');
-  const brightnessInput = document.getElementById('brightness-input');
-  const contrastInput = document.getElementById('contrast-input');
-  const clarityInput = document.getElementById('clarity-input');
-  const highlightsInput = document.getElementById('highlights-input');
-  const shadowsInput = document.getElementById('shadows-input');
-  const whitesInput = document.getElementById('whites-input');
-  const blacksInput = document.getElementById('blacks-input');
-  const saturationInput = document.getElementById('saturation-input');
-  const vibranceInput = document.getElementById('vibrance-input');
+  // ---- state ----
+  let originalImage = null;        // HTMLImageElement, read-only base
+  let originalFile  = null;        // File for name/format
+  let sourceObjectUrl = null;      // blob url for originalImage
+  let processedObjectUrl = null;   // blob url for preview + download
+  let debounceTimer = null;
+  let latestRequestId = 0;
+  let isProcessing = false;
 
-  let originalImage = null;
-  let processedDataUrl = null;
-  let objectUrl = null;
+  // reusable canvas
+  let sharedCanvas = null;
+  let sharedCtx = null;
 
-  function clampValue(value) {
-    const n = parseFloat(value);
-    if (isNaN(n)) return 0;
-    return Math.max(-100, Math.min(100, n));
+  // ---- build controls ----
+  const inputs = {};
+  const valueLabels = {};
+
+  CONTROLS.forEach(cfg => {
+    const row = document.createElement('div');
+    row.className = 'control-row';
+
+    const label = document.createElement('label');
+    label.className = 'control-label';
+    label.setAttribute('for', `ctrl-${cfg.id}`);
+    label.textContent = cfg.label;
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.id = `ctrl-${cfg.id}`;
+    slider.className = 'control-slider';
+    slider.min = '-100';
+    slider.max = '100';
+    slider.step = '1';
+    slider.value = '0';
+    slider.setAttribute('aria-label', cfg.label);
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'control-value';
+    valueEl.textContent = '0';
+
+    slider.addEventListener('input', () => {
+      valueEl.textContent = slider.value;
+    });
+
+    row.appendChild(label);
+    row.appendChild(slider);
+    row.appendChild(valueEl);
+    controlsEl.appendChild(row);
+
+    inputs[cfg.id] = slider;
+    valueLabels[cfg.id] = valueEl;
+  });
+
+  // ---- helpers ----
+  function readValues() {
+    const out = {};
+    CONTROLS.forEach(cfg => {
+      const v = parseFloat(inputs[cfg.id].value);
+      out[cfg.id] = isNaN(v) ? 0 : Math.max(-100, Math.min(100, Math.round(v)));
+    });
+    return out;
   }
 
-  function readInputs() {
-    return {
-      exposure: clampValue(exposureInput.value),
-      brightness: clampValue(brightnessInput.value),
-      contrast: clampValue(contrastInput.value),
-      clarity: clampValue(clarityInput.value),
-      highlights: clampValue(highlightsInput.value),
-      shadows: clampValue(shadowsInput.value),
-      whites: clampValue(whitesInput.value),
-      blacks: clampValue(blacksInput.value),
-      saturation: clampValue(saturationInput.value),
-      vibrance: clampValue(vibranceInput.value)
-    };
+  function isIdentity(values) {
+    return CONTROLS.every(cfg => values[cfg.id] === 0);
   }
 
-  function syncInputs(values) {
-    exposureInput.value = values.exposure;
-    brightnessInput.value = values.brightness;
-    contrastInput.value = values.contrast;
-    clarityInput.value = values.clarity;
-    highlightsInput.value = values.highlights;
-    shadowsInput.value = values.shadows;
-    whitesInput.value = values.whites;
-    blacksInput.value = values.blacks;
-    saturationInput.value = values.saturation;
-    vibranceInput.value = values.vibrance;
+  // ---- linear color helpers ----
+  function srgbToLinear(c) {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  }
+  function linearToSrgb(v) {
+    const c = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+    return Math.min(255, Math.max(0, c * 255));
   }
 
-  function clearPreview() {
-    if (objectUrl) {
-      URL.revokeObjectURL(objectUrl);
-      objectUrl = null;
+  // ---- pipeline: pure-ish functions ----
+  function processPixels(data, w, h, values) {
+    const expF = values.exposure >= 0
+      ? 1 + (values.exposure / 100) * PROFILE.exposure.pos
+      : 1 / (1 + (-values.exposure / 100) * PROFILE.exposure.neg);
+
+    const brightOff = (values.brightness / 100) * PROFILE.brightness.scale;
+
+    const contrastF = values.contrast >= 0
+      ? 1 + (values.contrast / 100) * PROFILE.contrast.pos
+      : 1 / (1 + (-values.contrast / 100) * PROFILE.contrast.neg);
+
+    const hlF = values.highlights >= 0
+      ? 1 + (values.highlights / 100) * PROFILE.highlights.pos
+      : 1 / (1 + (-values.highlights / 100) * PROFILE.highlights.neg);
+
+    const shF = values.shadows >= 0
+      ? 1 + (values.shadows / 100) * PROFILE.shadows.pos
+      : 1 / (1 + (-values.shadows / 100) * PROFILE.shadows.neg);
+
+    const wP = PROFILE.whites;
+    const whF = values.whites >= 0
+      ? 1 + (values.whites / 100) * wP.pos
+      : 1 / (1 + (-values.whites / 100) * wP.neg);
+
+    const bP = PROFILE.blacks;
+    const blF = values.blacks >= 0
+      ? 1 + (values.blacks / 100) * bP.pos
+      : 1 / (1 + (-values.blacks / 100) * bP.neg);
+
+    const satF = values.saturation >= 0
+      ? 1 + (values.saturation / 100) * PROFILE.saturation.pos
+      : 1 / (1 + (-values.saturation / 100) * PROFILE.saturation.neg);
+
+    const vibAmount = (values.vibrance / 100) * PROFILE.vibrance.scale;
+
+    // pass 1: tone in linear space
+    for (let i = 0; i < data.length; i += 4) {
+      let r = srgbToLinear(data[i]);
+      let g = srgbToLinear(data[i + 1]);
+      let b = srgbToLinear(data[i + 2]);
+
+      // exposure (multiplicative in linear)
+      r *= expF; g *= expF; b *= expF;
+
+      // brightness (additive in linear, scaled)
+      const bOff = brightOff / 255;
+      r += bOff; g += bOff; b += bOff;
+
+      // contrast around 0.5 linear pivot
+      r = (r - 0.5) * contrastF + 0.5;
+      g = (g - 0.5) * contrastF + 0.5;
+      b = (b - 0.5) * contrastF + 0.5;
+
+      // back to srgb for zone-based curves
+      let rr = linearToSrgb(r);
+      let gg = linearToSrgb(g);
+      let bb = linearToSrgb(b);
+
+      let luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
+
+      // highlights (smooth-ish weight on bright side)
+      if (luma > 128) {
+        const weight = (luma - 128) / 127;
+        rr += (rr * (hlF - 1)) * weight;
+        gg += (gg * (hlF - 1)) * weight;
+        bb += (bb * (hlF - 1)) * weight;
+      }
+
+      // shadows (smooth-ish weight on dark side)
+      if (luma < 128) {
+        const weight = (128 - luma) / 128;
+        rr += (rr * (shF - 1)) * weight;
+        gg += (gg * (shF - 1)) * weight;
+        bb += (bb * (shF - 1)) * weight;
+      }
+
+      luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
+
+      // whites (top end, soft pivot)
+      if (luma > wP.pivot) {
+        const t = Math.min(1, (luma - wP.pivot) / wP.span);
+        const weight = t * t * (3 - 2 * t); // smoothstep
+        rr += (rr * (whF - 1)) * weight;
+        gg += (gg * (whF - 1)) * weight;
+        bb += (bb * (whF - 1)) * weight;
+      }
+
+      // blacks (bottom end, soft pivot)
+      if (luma < bP.pivot) {
+        const t = Math.min(1, (bP.pivot - luma) / bP.span);
+        const weight = t * t * (3 - 2 * t);
+        rr += (rr * (blF - 1)) * weight;
+        gg += (gg * (blF - 1)) * weight;
+        bb += (bb * (blF - 1)) * weight;
+      }
+
+      data[i]     = Math.min(255, Math.max(0, rr));
+      data[i + 1] = Math.min(255, Math.max(0, gg));
+      data[i + 2] = Math.min(255, Math.max(0, bb));
     }
-    previewImg.src = '#';
+
+    // pass 2: clarity = unsharp mask (3x3 laplacian)
+    if (values.clarity !== 0) {
+      applyClarity(data, w, h, values.clarity);
+    }
+
+    // pass 3: single saturation+vibrance pass in HSL-ish
+    if (values.saturation !== 0 || values.vibrance !== 0) {
+      applySaturation(data, satF, vibAmount);
+    }
+  }
+
+  function applyClarity(data, w, h, amount) {
+    const src = new Uint8ClampedArray(data);
+    const strength = (amount / 100) * 0.5;
+    // skip edges for simplicity; border stays unchanged
+    for (let y = 1; y < h - 1; y++) {
+      const rowBase = y * w;
+      for (let x = 1; x < w - 1; x++) {
+        const i = (rowBase + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const center = src[i + c];
+          const up    = src[i - w * 4 + c];
+          const down  = src[i + w * 4 + c];
+          const left  = src[i - 4 + c];
+          const right = src[i + 4 + c];
+          const lap = center * 5 - up - down - left - right;
+          data[i + c] = Math.min(255, Math.max(0, center + lap * strength));
+        }
+      }
+    }
+  }
+
+  function applySaturation(data, satF, vibAmount) {
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      const maxC = Math.max(r, g, b);
+      const minC = Math.min(r, g, b);
+      const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+
+      // combined factor: base saturation then vibrance protection for low-sat pixels
+      const vibFactor = 1 + vibAmount * Math.max(0, 1 - sat);
+      const combined = satF * vibFactor;
+
+      data[i]     = Math.min(255, Math.max(0, gray + (r - gray) * combined));
+      data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * combined));
+      data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * combined));
+    }
+  }
+
+  // ---- render ----
+  function getSharedCanvas(w, h) {
+    if (!sharedCanvas) {
+      sharedCanvas = document.createElement('canvas');
+      sharedCtx = sharedCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    if (sharedCanvas.width !== w || sharedCanvas.height !== h) {
+      sharedCanvas.width = w;
+      sharedCanvas.height = h;
+    }
+    return sharedCanvas;
+  }
+
+  function computePreview(maxDim, requestId) {
+    if (!originalImage) return;
+
+    const nw = originalImage.naturalWidth;
+    const nh = originalImage.naturalHeight;
+    if (!nw || !nh) return;
+
+    const scale = Math.min(1, maxDim / Math.max(nw, nh));
+    const w = Math.max(1, Math.round(nw * scale));
+    const h = Math.max(1, Math.round(nh * scale));
+
+    const canvas = getSharedCanvas(w, h);
+    sharedCtx.drawImage(originalImage, 0, 0, w, h);
+    const imageData = sharedCtx.getImageData(0, 0, w, h);
+    const values = readValues();
+
+    if (!isIdentity(values)) {
+      processPixels(imageData.data, w, h, values);
+      sharedCtx.putImageData(imageData, 0, 0);
+    }
+
+    if (requestId !== latestRequestId) return;
+
+    if (maxDim === Infinity) {
+      isProcessing = true;
+      canvas.toBlob(blob => {
+        isProcessing = false;
+        if (requestId !== latestRequestId) return;
+        if (processedObjectUrl) URL.revokeObjectURL(processedObjectUrl);
+        processedObjectUrl = URL.createObjectURL(blob);
+        previewImg.src = processedObjectUrl;
+        downloadBtn.disabled = false;
+      }, 'image/png');
+    } else {
+      previewImg.src = canvas.toDataURL('image/png');
+      // full-res download only after explicit apply; keep disabled here
+    }
+  }
+
+  function scheduleApply() {
+    if (!originalImage) return;
+    latestRequestId++;
+    const reqId = latestRequestId;
+
+    clearTimeout(debounceTimer);
+
+    // immediate low-res feedback
+    computePreview(PREVIEW_MAX_DIM, reqId);
+
+    // debounced full-res
+    debounceTimer = setTimeout(() => {
+      if (reqId !== latestRequestId) return;
+      computePreview(Infinity, reqId);
+    }, DEBOUNCE_MS);
+  }
+
+  function applyNow() {
+    if (!originalImage) return;
+    clearTimeout(debounceTimer);
+    latestRequestId++;
+    computePreview(Infinity, latestRequestId);
+  }
+
+  // ---- file handling ----
+  function clearPreview() {
+    if (sourceObjectUrl) {
+      URL.revokeObjectURL(sourceObjectUrl);
+      sourceObjectUrl = null;
+    }
+    if (processedObjectUrl) {
+      URL.revokeObjectURL(processedObjectUrl);
+      processedObjectUrl = null;
+    }
+    previewImg.src = '';
     previewImg.classList.add('hidden');
     placeholder.classList.remove('hidden');
     previewBox.classList.remove('active');
     filenameEl.textContent = '';
     originalImage = null;
-    processedDataUrl = null;
+    originalFile = null;
     applyBtn.disabled = true;
     downloadBtn.disabled = true;
+    isProcessing = false;
   }
 
   function showImage(file) {
-    if (objectUrl) {
-      URL.revokeObjectURL(objectUrl);
+    if (sourceObjectUrl) {
+      URL.revokeObjectURL(sourceObjectUrl);
+      sourceObjectUrl = null;
     }
 
-    objectUrl = URL.createObjectURL(file);
-    previewImg.src = objectUrl;
-    previewImg.classList.remove('hidden');
-    placeholder.classList.add('hidden');
-    previewBox.classList.add('active');
+    sourceObjectUrl = URL.createObjectURL(file);
+    originalFile = file;
 
     const name = file.name;
     filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
 
-    originalImage = new Image();
-    originalImage.onload = function() {
-      processedDataUrl = null;
-      downloadBtn.disabled = true;
+    const img = new Image();
+    img.onload = function() {
+      if (sourceObjectUrl) {
+        URL.revokeObjectURL(sourceObjectUrl);
+        sourceObjectUrl = null;
+      }
+      // note: img keeps the decoded bitmap in memory; we no longer need the url
+      originalImage = img;
+      previewImg.src = sourceObjectUrl || img.src;
+      previewImg.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+      previewBox.classList.add('active');
       applyBtn.disabled = false;
+      downloadBtn.disabled = true;
+      processedObjectUrl = null;
     };
-    originalImage.src = objectUrl;
-  }
+    img.onerror = function() {
+      clearPreview();
+      filenameEl.textContent = 'failed to load image';
+    };
+    img.src = sourceObjectUrl;
 
-  // helper: rgb to hsl-ish adjustments
-  function applyAdjustments() {
-    if (!originalImage) return;
-
-    const values = readInputs();
-    syncInputs(values);
-
-    const w = originalImage.naturalWidth;
-    const h = originalImage.naturalHeight;
-    if (w === 0 || h === 0) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(originalImage, 0, 0);
-
-    const imageData = ctx.getImageData(0, 0, w, h);
-    const data = imageData.data;
-
-    // precompute factors
-    const exposureFactor = values.exposure >= 0
-      ? 1 + (values.exposure / 100) * 1.5
-      : 1 / (1 + (-values.exposure / 100) * 2);
-
-    const brightnessOffset = (values.brightness / 100) * 80;
-
-    const contrastFactor = values.contrast >= 0
-      ? 1 + (values.contrast / 100) * 1.2
-      : 1 / (1 + (-values.contrast / 100) * 0.8);
-
-    const clarityFactor = values.clarity >= 0
-      ? 1 + (values.clarity / 100) * 0.8
-      : 1 / (1 + (-values.clarity / 100) * 0.6);
-
-    const highlightsFactor = values.highlights >= 0
-      ? 1 + (values.highlights / 100) * 0.9
-      : 1 / (1 + (-values.highlights / 100) * 0.7);
-
-    const shadowsFactor = values.shadows >= 0
-      ? 1 + (values.shadows / 100) * 0.9
-      : 1 / (1 + (-values.shadows / 100) * 0.7);
-
-    const whitesFactor = values.whites >= 0
-      ? 1 + (values.whites / 100) * 0.8
-      : 1 / (1 + (-values.whites / 100) * 0.6);
-
-    const blacksFactor = values.blacks >= 0
-      ? 1 + (values.blacks / 100) * 0.8
-      : 1 / (1 + (-values.blacks / 100) * 0.6);
-
-    const saturationFactor = values.saturation >= 0
-      ? 1 + (values.saturation / 100) * 1.5
-      : 1 / (1 + (-values.saturation / 100) * 0.8);
-
-    const vibranceAmount = values.vibrance / 100;
-
-    for (let i = 0; i < data.length; i += 4) {
-      let r = data[i];
-      let g = data[i + 1];
-      let b = data[i + 2];
-
-      // exposure
-      r *= exposureFactor;
-      g *= exposureFactor;
-      b *= exposureFactor;
-
-      // brightness
-      r += brightnessOffset;
-      g += brightnessOffset;
-      b += brightnessOffset;
-
-      // contrast
-      r = (r - 128) * contrastFactor + 128;
-      g = (g - 128) * contrastFactor + 128;
-      b = (b - 128) * contrastFactor + 128;
-
-      // clarity (midtone contrast)
-      r = 128 + (r - 128) * clarityFactor;
-      g = 128 + (g - 128) * clarityFactor;
-      b = 128 + (b - 128) * clarityFactor;
-
-      // luma for zone-based adjustments
-      let luma = 0.299 * r + 0.587 * g + 0.114 * b;
-
-      // highlights (bright regions)
-      if (luma > 128) {
-        const weight = (luma - 128) / 127;
-        r = r + (r * (highlightsFactor - 1)) * weight;
-        g = g + (g * (highlightsFactor - 1)) * weight;
-        b = b + (b * (highlightsFactor - 1)) * weight;
-      }
-
-      // shadows (dark regions)
-      if (luma < 128) {
-        const weight = (128 - luma) / 128;
-        r = r + (r * (shadowsFactor - 1)) * weight;
-        g = g + (g * (shadowsFactor - 1)) * weight;
-        b = b + (b * (shadowsFactor - 1)) * weight;
-      }
-
-      // recalc luma after above
-      luma = 0.299 * r + 0.587 * g + 0.114 * b;
-
-      // whites (very bright)
-      if (luma > 200) {
-        const weight = (luma - 200) / 55;
-        r = r + (r * (whitesFactor - 1)) * weight;
-        g = g + (g * (whitesFactor - 1)) * weight;
-        b = b + (b * (whitesFactor - 1)) * weight;
-      }
-
-      // blacks (very dark)
-      if (luma < 55) {
-        const weight = (55 - luma) / 55;
-        r = r + (r * (blacksFactor - 1)) * weight;
-        g = g + (g * (blacksFactor - 1)) * weight;
-        b = b + (b * (blacksFactor - 1)) * weight;
-      }
-
-      // saturation
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      r = gray + (r - gray) * saturationFactor;
-      g = gray + (g - gray) * saturationFactor;
-      b = gray + (b - gray) * saturationFactor;
-
-      // vibrance: boost less-saturated colors more
-      const maxC = Math.max(r, g, b);
-      const minC = Math.min(r, g, b);
-      const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
-
-      if (vibranceAmount !== 0) {
-        const vibranceFactor = 1 + vibranceAmount * (1 - sat) * 1.2;
-        r = gray + (r - gray) * vibranceFactor;
-        g = gray + (g - gray) * vibranceFactor;
-        b = gray + (b - gray) * vibranceFactor;
-      }
-
-      data[i] = Math.min(255, Math.max(0, r));
-      data[i + 1] = Math.min(255, Math.max(0, g));
-      data[i + 2] = Math.min(255, Math.max(0, b));
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-    processedDataUrl = canvas.toDataURL('image/png');
-
-    previewImg.src = processedDataUrl;
-    downloadBtn.disabled = false;
-  }
-
-  function downloadImage() {
-    if (!processedDataUrl) return;
-
-    const a = document.createElement('a');
-    a.href = processedDataUrl;
-    a.download = 'processed-image.png';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // show the raw image immediately while decoding
+    previewImg.src = sourceObjectUrl;
+    previewImg.classList.remove('hidden');
+    placeholder.classList.add('hidden');
+    previewBox.classList.add('active');
   }
 
   function handleFileChange(e) {
     const files = e.target.files;
-
     if (!files || files.length === 0) {
       clearPreview();
       return;
     }
-
     const file = files[0];
     if (file.type.startsWith('image/')) {
+      // guard against svg for now (raster only)
+      if (file.type === 'image/svg+xml') {
+        clearPreview();
+        filenameEl.textContent = 'svg not supported';
+        fileInput.value = '';
+        return;
+      }
       showImage(file);
     } else {
       clearPreview();
@@ -274,19 +432,30 @@
     }
   }
 
+  // ---- download ----
+  function downloadImage() {
+    if (!processedObjectUrl) return;
+
+    const base = (originalFile && originalFile.name
+      ? originalFile.name.replace(/\.[^/.]+$/, '')
+      : 'processed');
+    const a = document.createElement('a');
+    a.href = processedObjectUrl;
+    a.download = `${base}-edited.png`;
+    a.click();
+  }
+
+  // ---- events ----
   fileInput.addEventListener('click', function() {
     this.value = '';
   });
-
   fileInput.addEventListener('change', handleFileChange);
-  applyBtn.addEventListener('click', applyAdjustments);
+  applyBtn.addEventListener('click', applyNow);
   downloadBtn.addEventListener('click', downloadImage);
 
   window.addEventListener('beforeunload', function() {
-    if (objectUrl) {
-      URL.revokeObjectURL(objectUrl);
-      objectUrl = null;
-    }
+    if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
+    if (processedObjectUrl) URL.revokeObjectURL(processedObjectUrl);
   });
 
   clearPreview();
