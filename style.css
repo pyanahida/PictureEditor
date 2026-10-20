@@ -4,14 +4,41 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg: #fafafa;
+  --surface: #fff;
+  --border: #e5e5e5;
+  --text: #111;
+  --muted: #999;
+  --accent: #111;
+  --accent-text: #fff;
+  --disabled-bg: #ddd;
+  --disabled-text: #999;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --surface: #1e1e1e;
+    --border: #333;
+    --text: #e8e8e8;
+    --muted: #888;
+    --accent: #e8e8e8;
+    --accent-text: #111;
+    --disabled-bg: #2c2c2c;
+    --disabled-text: #666;
+  }
+}
+
 body {
-  background: #fafafa;
+  background: var(--bg);
+  color: var(--text);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  min-height: 100vh;
+  min-height: 100svh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 2rem 1.5rem;
 }
 
 .container {
@@ -19,44 +46,52 @@ body {
   width: 100%;
 }
 
-/* minimal file picker */
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 1.25rem;
+  color: var(--text);
+}
+
+/* file picker */
 .picker {
   display: inline-block;
-  background: #111;
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-text);
   font-size: 0.95rem;
   font-weight: 500;
   padding: 0.7rem 1.5rem;
   border-radius: 40px;
   cursor: pointer;
   letter-spacing: 0.01em;
-  transition: background 0.15s;
+  transition: opacity 0.15s;
   margin-bottom: 1.5rem;
 }
 
 .picker:hover {
-  background: #2a2a2a;
+  opacity: 0.85;
 }
 
 #file-input {
   display: none;
 }
 
-/* preview area — plain, minimal */
+/* preview area */
 .preview {
-  background: #fff;
+  background: var(--surface);
   border-radius: 20px;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--border);
   min-height: 240px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 0.75rem;
   transition: border-color 0.15s;
 }
 
 .preview.active {
-  border-color: #ccc;
+  border-color: var(--muted);
 }
 
 .preview img {
@@ -73,7 +108,7 @@ body {
 }
 
 .placeholder {
-  color: #aaa;
+  color: var(--muted);
   font-size: 0.95rem;
   text-align: center;
 }
@@ -82,10 +117,9 @@ body {
   display: none;
 }
 
-/* optional: tiny filename note, kept subtle */
 .filename {
   font-size: 0.8rem;
-  color: #999;
+  color: var(--muted);
   margin-top: 0.9rem;
   text-align: center;
   overflow: hidden;
@@ -106,56 +140,71 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.55rem;
 }
 
 .control-label {
-  font-size: 0.9rem;
-  color: #555;
-  min-width: 6.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  width: 7rem;
 }
 
-.control-input {
+.control-slider {
   flex: 1;
-  padding: 0.5rem 0.85rem;
-  font-size: 0.9rem;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  outline: none;
-  transition: border-color 0.15s;
-  font-family: inherit;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
-.control-input:focus {
-  border-color: #999;
+.control-value {
+  font-size: 0.8rem;
+  color: var(--text);
+  width: 2.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
+/* buttons */
 .button-row {
   display: flex;
   gap: 0.75rem;
-  margin-top: 1.2rem;
+  margin-top: 1.5rem;
 }
 
 .action-btn {
   flex: 1;
-  padding: 0.65rem 1rem;
+  padding: 0.7rem 1rem;
   font-size: 0.9rem;
   font-weight: 500;
   font-family: inherit;
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
-  background: #111;
-  color: #fff;
+  transition: opacity 0.15s;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #2a2a2a;
+  opacity: 0.85;
 }
 
 .action-btn:disabled {
-  background: #ddd;
-  color: #999;
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
   cursor: not-allowed;
+}
+
+/* focus visibility */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
 }
