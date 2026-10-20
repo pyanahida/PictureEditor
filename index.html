@@ -1,372 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>图片选择 · 实时预览</title>
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>image preview</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-        body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-            background: #f5f7fb;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 1.5rem;
-        }
+    body {
+      background: #fafafa;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
 
-        .card {
-            max-width: 640px;
-            width: 100%;
-            background: #ffffff;
-            border-radius: 2rem;
-            box-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.15), 0 10px 15px -6px rgba(0, 0, 0, 0.05);
-            padding: 2rem 2rem 2.5rem;
-            transition: box-shadow 0.2s ease;
-        }
+    .container {
+      max-width: 560px;
+      width: 100%;
+    }
 
-        h1 {
-            font-size: 1.75rem;
-            font-weight: 600;
-            letter-spacing: -0.01em;
-            color: #1e293b;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
+    /* minimal file picker */
+    .picker {
+      display: inline-block;
+      background: #111;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 500;
+      padding: 0.7rem 1.5rem;
+      border-radius: 40px;
+      cursor: pointer;
+      letter-spacing: 0.01em;
+      transition: background 0.15s;
+      margin-bottom: 1.5rem;
+    }
 
-        h1::before {
-            content: "📸";
-            font-size: 1.8rem;
-            font-weight: 400;
-        }
+    .picker:hover {
+      background: #2a2a2a;
+    }
 
-        /* 自定义文件上传按钮 */
-        .file-input-wrapper {
-            margin-bottom: 2rem;
-        }
+    #file-input {
+      display: none;
+    }
 
-        .file-label {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.6rem;
-            background: #eef2ff;
-            color: #4f46e5;
-            padding: 0.85rem 1.8rem;
-            border-radius: 3rem;
-            font-weight: 500;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background 0.2s, color 0.2s, transform 0.1s;
-            border: 1px solid transparent;
-            box-shadow: 0 2px 6px rgba(79, 70, 229, 0.1);
-            width: fit-content;
-        }
+    /* preview area — plain, minimal */
+    .preview {
+      background: #fff;
+      border-radius: 20px;
+      border: 1px solid #e5e5e5;
+      min-height: 240px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      transition: border-color 0.15s;
+    }
 
-        .file-label:hover {
-            background: #e0e7ff;
-            color: #4338ca;
-        }
+    .preview.active {
+      border-color: #ccc;
+    }
 
-        .file-label:active {
-            transform: scale(0.98);
-        }
+    .preview img {
+      max-width: 100%;
+      max-height: 400px;
+      width: auto;
+      height: auto;
+      display: block;
+      border-radius: 12px;
+    }
 
-        .file-label svg {
-            width: 1.25rem;
-            height: 1.25rem;
-            fill: currentColor;
-        }
+    .preview img.hidden {
+      display: none;
+    }
 
-        /* 隐藏原生 input */
-        #imageInput {
-            position: absolute;
-            width: 0;
-            height: 0;
-            opacity: 0;
-            overflow: hidden;
-            pointer-events: none;
-        }
+    .placeholder {
+      color: #aaa;
+      font-size: 0.95rem;
+      text-align: center;
+    }
 
-        /* 预览区域 */
-        .preview-container {
-            background: #f8fafc;
-            border-radius: 1.25rem;
-            border: 2px dashed #cbd5e1;
-            padding: 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 260px;
-            transition: border-color 0.2s, background 0.2s;
-        }
+    .placeholder.hidden {
+      display: none;
+    }
 
-        .preview-container.has-image {
-            border-style: solid;
-            border-color: #a5b4fc;
-            background: #ffffff;
-            padding: 0.75rem;
-        }
+    /* optional: tiny filename note, kept subtle */
+    .filename {
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 0.9rem;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-        .preview-placeholder {
-            text-align: center;
-            color: #64748b;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 0.95rem;
-        }
-
-        .preview-placeholder svg {
-            width: 3.5rem;
-            height: 3.5rem;
-            opacity: 0.7;
-            fill: #94a3b8;
-        }
-
-        .preview-image {
-            max-width: 100%;
-            max-height: 380px;
-            width: auto;
-            height: auto;
-            border-radius: 0.9rem;
-            box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.15);
-            display: block;
-            object-fit: contain;
-            transition: opacity 0.15s ease;
-        }
-
-        .preview-image.hidden {
-            display: none;
-        }
-
-        .file-name {
-            margin-top: 1rem;
-            font-size: 0.85rem;
-            color: #475569;
-            background: #f1f5f9;
-            padding: 0.4rem 1rem;
-            border-radius: 2rem;
-            display: inline-block;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            border: 1px solid #e2e8f0;
-            text-align: center;
-        }
-
-        .file-name:empty {
-            display: none;
-        }
-
-        /* 用于布局的小优化 */
-        .preview-wrapper {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-    </style>
+    .filename:empty {
+      display: none;
+    }
+  </style>
 </head>
 <body>
-    <div class="card">
-        <h1>图片预览</h1>
+  <div class="container">
+    <input type="file" id="file-input" accept="image/*">
+    <label for="file-input" class="picker">choose image</label>
 
-        <div class="file-input-wrapper">
-            <!-- 隐藏的 file input -->
-            <input type="file" id="imageInput" accept="image/*">
-            <!-- 自定义标签按钮 -->
-            <label for="imageInput" class="file-label">
-                <svg viewBox="0 0 24 24" width="24" height="24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" opacity="0.2"/>
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" fill="currentColor"/>
-                </svg>
-                选择图片
-            </label>
-        </div>
-
-        <div class="preview-wrapper">
-            <!-- 预览容器，动态切换样式 -->
-            <div class="preview-container" id="previewContainer">
-                <!-- 占位图标 -->
-                <div class="preview-placeholder" id="placeholder">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/>
-                    </svg>
-                    <span>还没有选择图片</span>
-                </div>
-                <!-- 图片元素，默认隐藏 -->
-                <img id="previewImage" class="preview-image hidden" src="#" alt="图片预览">
-            </div>
-            <!-- 显示文件名 (可选) -->
-            <div id="fileName" class="file-name"></div>
-        </div>
+    <div class="preview" id="preview-box">
+      <span class="placeholder" id="placeholder">no image selected</span>
+      <img id="preview-img" class="hidden" src="#" alt="preview">
     </div>
 
-    <script>
-        (function() {
-            const fileInput = document.getElementById('imageInput');
-            const previewImage = document.getElementById('previewImage');
-            const placeholder = document.getElementById('placeholder');
-            const previewContainer = document.getElementById('previewContainer');
-            const fileNameDiv = document.getElementById('fileName');
+    <div class="filename" id="filename"></div>
+  </div>
 
-            // 当前预览的 object URL (用于释放内存)
-            let currentObjectURL = null;
+  <script>
+    (function() {
+      const fileInput = document.getElementById('file-input');
+      const previewImg = document.getElementById('preview-img');
+      const placeholder = document.getElementById('placeholder');
+      const previewBox = document.getElementById('preview-box');
+      const filenameEl = document.getElementById('filename');
 
-            /**
-             * 更新预览区域
-             * @param {File|null} file - 选中的图片文件
-             */
-            function updatePreview(file) {
-                // 释放之前创建的 object URL (避免内存泄漏)
-                if (currentObjectURL) {
-                    URL.revokeObjectURL(currentObjectURL);
-                    currentObjectURL = null;
-                }
+      let objectUrl = null;
 
-                if (file && file.type.startsWith('image/')) {
-                    // 为文件创建一个新的 object URL
-                    const objectURL = URL.createObjectURL(file);
-                    currentObjectURL = objectURL;
+      function clearPreview() {
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
+        }
+        previewImg.src = '#';
+        previewImg.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        previewBox.classList.remove('active');
+        filenameEl.textContent = '';
+      }
 
-                    // 设置图片源，显示图片
-                    previewImage.src = objectURL;
-                    previewImage.classList.remove('hidden');
+      function showImage(file) {
+        // release previous url
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+        }
 
-                    // 隐藏占位图
-                    if (placeholder) {
-                        placeholder.style.display = 'none';
-                    }
+        objectUrl = URL.createObjectURL(file);
+        previewImg.src = objectUrl;
+        previewImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        previewBox.classList.add('active');
 
-                    // 容器添加样式 (有图片时边框样式改变)
-                    previewContainer.classList.add('has-image');
+        // subtle filename
+        const name = file.name;
+        filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
+      }
 
-                    // 显示文件名（截断过长名称）
-                    if (fileNameDiv) {
-                        fileNameDiv.textContent = file.name.length > 48
-                            ? file.name.substring(0, 45) + '...'
-                            : file.name;
-                    }
-                } else {
-                    // 没有有效图片：重置为占位状态
-                    resetToPlaceholder();
+      function handleFileChange(e) {
+        const files = e.target.files;
 
-                    // 如果有文件但类型不是图片（理论上accept="image/*"会过滤，但以防万一）
-                    if (file) {
-                        if (fileNameDiv) {
-                            fileNameDiv.textContent = '不支持的文件类型';
-                        }
-                    } else {
-                        if (fileNameDiv) {
-                            fileNameDiv.textContent = '';
-                        }
-                    }
-                }
-            }
+        if (!files || files.length === 0) {
+          clearPreview();
+          return;
+        }
 
-            /**
-             * 重置为默认的占位状态 (无图片)
-             */
-            function resetToPlaceholder() {
-                // 隐藏图片
-                previewImage.classList.add('hidden');
-                // 清除src避免显示破损图片
-                previewImage.src = '#';
-                // 显示占位图
-                if (placeholder) {
-                    placeholder.style.display = 'flex';
-                }
-                // 移除有图片时的容器样式
-                previewContainer.classList.remove('has-image');
-                // 清空文件名 (可选)
-                if (fileNameDiv) {
-                    fileNameDiv.textContent = '';
-                }
+        const file = files[0];
+        if (file.type.startsWith('image/')) {
+          showImage(file);
+        } else {
+          // non-image (though accept="image/*" should filter)
+          clearPreview();
+          filenameEl.textContent = 'not an image';
+          fileInput.value = '';
+        }
+      }
 
-                // 释放之前的 object URL
-                if (currentObjectURL) {
-                    URL.revokeObjectURL(currentObjectURL);
-                    currentObjectURL = null;
-                }
-            }
+      // reset input so the same file can be chosen again (triggers change)
+      fileInput.addEventListener('click', function() {
+        this.value = '';
+      });
 
-            /**
-             * 处理文件选择变化
-             */
-            function handleFileChange(event) {
-                const files = event.target.files;
+      fileInput.addEventListener('change', handleFileChange);
 
-                if (!files || files.length === 0) {
-                    // 用户取消了选择，或者没有选择文件 -> 重置预览
-                    resetToPlaceholder();
-                    return;
-                }
+      // clean up object url on page unload
+      window.addEventListener('beforeunload', function() {
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
+        }
+      });
 
-                // 获取第一个文件（因为未设置multiple）
-                const file = files[0];
-
-                // 安全检查：确保是图片类型 (accept="image/*" 会过滤，但这里双重检查)
-                if (file && file.type.startsWith('image/')) {
-                    updatePreview(file);
-                } else {
-                    // 非图片文件 (理论上不会发生，但保留处理)
-                    resetToPlaceholder();
-                    if (fileNameDiv) {
-                        fileNameDiv.textContent = '请选择图片文件';
-                    }
-                    // 清空 input 以便重新选择同一文件时可以触发change
-                    fileInput.value = '';
-                }
-            }
-
-            /**
-             * 处理 object URL 的内存释放 (页面卸载时)
-             */
-            function cleanup() {
-                if (currentObjectURL) {
-                    URL.revokeObjectURL(currentObjectURL);
-                    currentObjectURL = null;
-                }
-            }
-
-            // 监听文件选择变化
-            fileInput.addEventListener('change', handleFileChange);
-
-            // 页面卸载时清理资源
-            window.addEventListener('beforeunload', cleanup);
-
-            // 可选: 如果用户点击了已预览的图片区域，不会触发任何操作（保持原样）
-            // 如果需要支持重新选择，完全依靠 input 和 label。
-            // 如果用户想重新选择相同文件，可能会因为 input 的值未清空而不触发 change。
-            // 但这是普遍行为，若需要相同文件重新加载，可以监听 input 点击事件清空 value? 
-            // 实际上重新打开文件选择器后选择相同文件，大多数浏览器仍会触发 change，因为 value 由文件路径决定 (但已做清理)，不过为了更流畅，可以保持原样。
-            // 如果需要的话，可以在 label 点击时清空 input value？ 但会导致无法取消？ 暂不处理。
-            // 有个小细节：如果用户选择图片后又取消，input 的 value 仍保留之前文件路径，再次点击取消可能无变化。
-            // 但这里不深入处理，保持简洁。
-            // 点击 input 之前如果是空就不管。
-            // 如果希望在用户点击选择时重置 input 以便相同文件也能触发，可以加一段：
-            // fileInput.addEventListener('click', function() { this.value = ''; }); 
-            // 但这样做有个副作用：用键盘操作或一些边缘情况可能有点问题。不过我们加上它会更友好（允许重复选择同一文件）。
-            // 对于许多用户来说，选择相同图片再次预览是合理的。加上它。
-            fileInput.addEventListener('click', function() {
-                // 重置 input 的值，这样即使选择相同文件也会触发 change
-                this.value = '';
-            });
-
-            // 初始化占位状态 (虽然默认已经是占位，但确保万无一失)
-            resetToPlaceholder();
-        })();
-    </script>
+      // start clean
+      clearPreview();
+    })();
+  </script>
 </body>
 </html>
