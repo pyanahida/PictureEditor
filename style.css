@@ -1,0 +1,99 @@
+/* style.css */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #fafafa;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.container {
+  max-width: 560px;
+  width: 100%;
+}
+
+/* minimal file picker */
+.picker {
+  display: inline-block;
+  background: #111;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 0.7rem 1.5rem;
+  border-radius: 40px;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: background 0.15s;
+  margin-bottom: 1.5rem;
+}
+
+.picker:hover {
+  background: #2a2a2a;
+}
+
+#file-input {
+  display: none;
+}
+
+/* preview area — plain, minimal */
+.preview {
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid #e5e5e5;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  transition: border-color 0.15s;
+}
+
+.preview.active {
+  border-color: #ccc;
+}
+
+.preview img {
+  max-width: 100%;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+}
+
+.preview img.hidden {
+  display: none;
+}
+
+.placeholder {
+  color: #aaa;
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.placeholder.hidden {
+  display: none;
+}
+
+/* optional: tiny filename note, kept subtle */
+.filename {
+  font-size: 0.8rem;
+  color: #999;
+  margin-top: 0.9rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filename:empty {
+  display: none;
+}
