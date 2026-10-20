@@ -13,6 +13,10 @@
   const clarityInput = document.getElementById('clarity-input');
   const highlightsInput = document.getElementById('highlights-input');
   const shadowsInput = document.getElementById('shadows-input');
+  const whitesInput = document.getElementById('whites-input');
+  const blacksInput = document.getElementById('blacks-input');
+  const saturationInput = document.getElementById('saturation-input');
+  const vibranceInput = document.getElementById('vibrance-input');
 
   let originalImage = null;
   let processedDataUrl = null;
@@ -31,7 +35,11 @@
       contrast: clampValue(contrastInput.value),
       clarity: clampValue(clarityInput.value),
       highlights: clampValue(highlightsInput.value),
-      shadows: clampValue(shadowsInput.value)
+      shadows: clampValue(shadowsInput.value),
+      whites: clampValue(whitesInput.value),
+      blacks: clampValue(blacksInput.value),
+      saturation: clampValue(saturationInput.value),
+      vibrance: clampValue(vibranceInput.value)
     };
   }
 
@@ -42,6 +50,10 @@
     clarityInput.value = values.clarity;
     highlightsInput.value = values.highlights;
     shadowsInput.value = values.shadows;
+    whitesInput.value = values.whites;
+    blacksInput.value = values.blacks;
+    saturationInput.value = values.saturation;
+    vibranceInput.value = values.vibrance;
   }
 
   function clearPreview() {
@@ -83,6 +95,7 @@
     originalImage.src = objectUrl;
   }
 
+  // helper: rgb to hsl-ish adjustments
   function applyAdjustments() {
     if (!originalImage) return;
 
@@ -125,6 +138,20 @@
       ? 1 + (values.shadows / 100) * 0.9
       : 1 / (1 + (-values.shadows / 100) * 0.7);
 
+    const whitesFactor = values.whites >= 0
+      ? 1 + (values.whites / 100) * 0.8
+      : 1 / (1 + (-values.whites / 100) * 0.6);
+
+    const blacksFactor = values.blacks >= 0
+      ? 1 + (values.blacks / 100) * 0.8
+      : 1 / (1 + (-values.blacks / 100) * 0.6);
+
+    const saturationFactor = values.saturation >= 0
+      ? 1 + (values.saturation / 100) * 1.5
+      : 1 / (1 + (-values.saturation / 100) * 0.8);
+
+    const vibranceAmount = values.vibrance / 100;
+
     for (let i = 0; i < data.length; i += 4) {
       let r = data[i];
       let g = data[i + 1];
@@ -145,13 +172,15 @@
       g = (g - 128) * contrastFactor + 128;
       b = (b - 128) * contrastFactor + 128;
 
-      // clarity (local contrast approximation via midtone emphasis)
+      // clarity (midtone contrast)
       r = 128 + (r - 128) * clarityFactor;
       g = 128 + (g - 128) * clarityFactor;
       b = 128 + (b - 128) * clarityFactor;
 
-      // highlights (affect bright regions)
-      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      // luma for zone-based adjustments
+      let luma = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      // highlights (bright regions)
       if (luma > 128) {
         const weight = (luma - 128) / 127;
         r = r + (r * (highlightsFactor - 1)) * weight;
@@ -159,12 +188,49 @@
         b = b + (b * (highlightsFactor - 1)) * weight;
       }
 
-      // shadows (affect dark regions)
+      // shadows (dark regions)
       if (luma < 128) {
         const weight = (128 - luma) / 128;
         r = r + (r * (shadowsFactor - 1)) * weight;
         g = g + (g * (shadowsFactor - 1)) * weight;
         b = b + (b * (shadowsFactor - 1)) * weight;
+      }
+
+      // recalc luma after above
+      luma = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      // whites (very bright)
+      if (luma > 200) {
+        const weight = (luma - 200) / 55;
+        r = r + (r * (whitesFactor - 1)) * weight;
+        g = g + (g * (whitesFactor - 1)) * weight;
+        b = b + (b * (whitesFactor - 1)) * weight;
+      }
+
+      // blacks (very dark)
+      if (luma < 55) {
+        const weight = (55 - luma) / 55;
+        r = r + (r * (blacksFactor - 1)) * weight;
+        g = g + (g * (blacksFactor - 1)) * weight;
+        b = b + (b * (blacksFactor - 1)) * weight;
+      }
+
+      // saturation
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = gray + (r - gray) * saturationFactor;
+      g = gray + (g - gray) * saturationFactor;
+      b = gray + (b - gray) * saturationFactor;
+
+      // vibrance: boost less-saturated colors more
+      const maxC = Math.max(r, g, b);
+      const minC = Math.min(r, g, b);
+      const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+
+      if (vibranceAmount !== 0) {
+        const vibranceFactor = 1 + vibranceAmount * (1 - sat) * 1.2;
+        r = gray + (r - gray) * vibranceFactor;
+        g = gray + (g - gray) * vibranceFactor;
+        b = gray + (b - gray) * vibranceFactor;
       }
 
       data[i] = Math.min(255, Math.max(0, r));
