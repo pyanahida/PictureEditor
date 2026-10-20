@@ -4,13 +4,45 @@
   const placeholder = document.getElementById('placeholder');
   const previewBox = document.getElementById('preview-box');
   const filenameEl = document.getElementById('filename');
-  const exposureInput = document.getElementById('exposure-input');
   const applyBtn = document.getElementById('apply-btn');
   const downloadBtn = document.getElementById('download-btn');
+
+  const exposureInput = document.getElementById('exposure-input');
+  const brightnessInput = document.getElementById('brightness-input');
+  const contrastInput = document.getElementById('contrast-input');
+  const clarityInput = document.getElementById('clarity-input');
+  const highlightsInput = document.getElementById('highlights-input');
+  const shadowsInput = document.getElementById('shadows-input');
 
   let originalImage = null;
   let processedDataUrl = null;
   let objectUrl = null;
+
+  function clampValue(value) {
+    const n = parseFloat(value);
+    if (isNaN(n)) return 0;
+    return Math.max(-100, Math.min(100, n));
+  }
+
+  function readInputs() {
+    return {
+      exposure: clampValue(exposureInput.value),
+      brightness: clampValue(brightnessInput.value),
+      contrast: clampValue(contrastInput.value),
+      clarity: clampValue(clarityInput.value),
+      highlights: clampValue(highlightsInput.value),
+      shadows: clampValue(shadowsInput.value)
+    };
+  }
+
+  function syncInputs(values) {
+    exposureInput.value = values.exposure;
+    brightnessInput.value = values.brightness;
+    contrastInput.value = values.contrast;
+    clarityInput.value = values.clarity;
+    highlightsInput.value = values.highlights;
+    shadowsInput.value = values.shadows;
+  }
 
   function clearPreview() {
     if (objectUrl) {
@@ -51,17 +83,11 @@
     originalImage.src = objectUrl;
   }
 
-  function clampExposure(value) {
-    const n = parseFloat(value);
-    if (isNaN(n)) return 0;
-    return Math.max(-100, Math.min(100, n));
-  }
-
-  function applyExposure() {
+  function applyAdjustments() {
     if (!originalImage) return;
 
-    const exposure = clampExposure(exposureInput.value);
-    exposureInput.value = exposure;
+    const values = readInputs();
+    syncInputs(values);
 
     const w = originalImage.naturalWidth;
     const h = originalImage.naturalHeight;
@@ -76,16 +102,74 @@
     const imageData = ctx.getImageData(0, 0, w, h);
     const data = imageData.data;
 
-    // exposure adjustment: convert -100..100 to a factor
-    // 0 -> 1, 100 -> ~2.5x, -100 -> ~0.1x
-    const factor = exposure >= 0
-      ? 1 + (exposure / 100) * 1.5
-      : 1 / (1 + (-exposure / 100) * 2);
+    // precompute factors
+    const exposureFactor = values.exposure >= 0
+      ? 1 + (values.exposure / 100) * 1.5
+      : 1 / (1 + (-values.exposure / 100) * 2);
+
+    const brightnessOffset = (values.brightness / 100) * 80;
+
+    const contrastFactor = values.contrast >= 0
+      ? 1 + (values.contrast / 100) * 1.2
+      : 1 / (1 + (-values.contrast / 100) * 0.8);
+
+    const clarityFactor = values.clarity >= 0
+      ? 1 + (values.clarity / 100) * 0.8
+      : 1 / (1 + (-values.clarity / 100) * 0.6);
+
+    const highlightsFactor = values.highlights >= 0
+      ? 1 + (values.highlights / 100) * 0.9
+      : 1 / (1 + (-values.highlights / 100) * 0.7);
+
+    const shadowsFactor = values.shadows >= 0
+      ? 1 + (values.shadows / 100) * 0.9
+      : 1 / (1 + (-values.shadows / 100) * 0.7);
 
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = Math.min(255, Math.max(0, data[i] * factor));
-      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
-      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+      let r = data[i];
+      let g = data[i + 1];
+      let b = data[i + 2];
+
+      // exposure
+      r *= exposureFactor;
+      g *= exposureFactor;
+      b *= exposureFactor;
+
+      // brightness
+      r += brightnessOffset;
+      g += brightnessOffset;
+      b += brightnessOffset;
+
+      // contrast
+      r = (r - 128) * contrastFactor + 128;
+      g = (g - 128) * contrastFactor + 128;
+      b = (b - 128) * contrastFactor + 128;
+
+      // clarity (local contrast approximation via midtone emphasis)
+      r = 128 + (r - 128) * clarityFactor;
+      g = 128 + (g - 128) * clarityFactor;
+      b = 128 + (b - 128) * clarityFactor;
+
+      // highlights (affect bright regions)
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (luma > 128) {
+        const weight = (luma - 128) / 127;
+        r = r + (r * (highlightsFactor - 1)) * weight;
+        g = g + (g * (highlightsFactor - 1)) * weight;
+        b = b + (b * (highlightsFactor - 1)) * weight;
+      }
+
+      // shadows (affect dark regions)
+      if (luma < 128) {
+        const weight = (128 - luma) / 128;
+        r = r + (r * (shadowsFactor - 1)) * weight;
+        g = g + (g * (shadowsFactor - 1)) * weight;
+        b = b + (b * (shadowsFactor - 1)) * weight;
+      }
+
+      data[i] = Math.min(255, Math.max(0, r));
+      data[i + 1] = Math.min(255, Math.max(0, g));
+      data[i + 2] = Math.min(255, Math.max(0, b));
     }
 
     ctx.putImageData(imageData, 0, 0);
@@ -129,7 +213,7 @@
   });
 
   fileInput.addEventListener('change', handleFileChange);
-  applyBtn.addEventListener('click', applyExposure);
+  applyBtn.addEventListener('click', applyAdjustments);
   downloadBtn.addEventListener('click', downloadImage);
 
   window.addEventListener('beforeunload', function() {
