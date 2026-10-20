@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,6 +17,17 @@
     </div>
 
     <div class="filename" id="filename"></div>
+
+    <div class="controls">
+      <div class="control-row">
+        <label for="exposure-input" class="control-label">exposure</label>
+        <input type="number" id="exposure-input" class="control-input" min="-100" max="100" value="0" step="1">
+      </div>
+      <div class="button-row">
+        <button id="apply-btn" class="action-btn" disabled>apply</button>
+        <button id="download-btn" class="action-btn" disabled>download</button>
+      </div>
+    </div>
   </div>
 
   <script src="script.js"></script>
