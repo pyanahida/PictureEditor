@@ -2,7 +2,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-} /* */
+}
 
 :root {
   --bg: #fafafa;
@@ -233,7 +233,6 @@ body {
   max-width: 800px;
   max-height: 90vh;
   overflow-y: auto;
-  overflow-x: auto;
   padding: 1.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
@@ -263,11 +262,14 @@ body {
   color: var(--text);
 }
 
+/* 修复网格错位问题：只让网格容器出现横向滚动 */
 .hsl-grid {
   display: grid;
-  grid-template-columns: auto repeat(6, minmax(90px, 1fr));
+  grid-template-columns: auto repeat(6, minmax(80px, 1fr));
   gap: 1rem;
   min-width: max-content;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
 }
 
 .hsl-header {
@@ -295,7 +297,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 0.3rem;
-  min-width: 90px;
+  min-width: 80px;
 }
 
 .hsl-slider {
