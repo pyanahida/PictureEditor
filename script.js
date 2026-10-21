@@ -41,6 +41,11 @@
     { id: 'luminance',  label: 'luminance' }
   ];
 
+  const POSTERIZATION_PARAMS = [
+    { id: 'highlights', label: 'highlights' },
+    { id: 'shadows',    label: 'shadows' }
+  ];
+
   const fileInput   = document.getElementById('file-input');
   const previewImg  = document.getElementById('preview-img');
   const placeholder = document.getElementById('placeholder');
@@ -54,6 +59,11 @@
   const hslModal    = document.getElementById('hsl-modal');
   const closeHslBtn = document.getElementById('close-hsl');
   const hslGrid     = document.getElementById('hsl-grid');
+
+  const postBtn       = document.getElementById('posterization-btn');
+  const postModal     = document.getElementById('posterization-modal');
+  const closePostBtn  = document.getElementById('close-posterization');
+  const postGrid      = document.getElementById('posterization-grid');
 
   let originalImage = null;
   let originalFile  = null;
@@ -100,8 +110,7 @@
   const hslInputs = {};
   HSL_COLORS.forEach(c => { hslInputs[c.name] = {}; });
   
-  // Headers
-  hslGrid.appendChild(document.createElement('div')); // empty corner
+  hslGrid.appendChild(document.createElement('div'));
   HSL_COLORS.forEach(c => {
     const header = document.createElement('div');
     header.className = 'hsl-header';
@@ -109,15 +118,12 @@
     hslGrid.appendChild(header);
   });
 
-  // Rows
   HSL_PARAMS.forEach(p => {
-    // Row label
     const rowLabel = document.createElement('div');
     rowLabel.className = 'hsl-row-label';
     rowLabel.textContent = p.label;
     hslGrid.appendChild(rowLabel);
 
-    // Cells
     HSL_COLORS.forEach(c => {
       const cell = document.createElement('div');
       cell.className = 'hsl-cell';
@@ -131,24 +137,15 @@
       slider.value = '0';
       slider.setAttribute('aria-label', `${c.name} ${p.label}`);
 
-      // Set gradient background based on row and color
       if (p.id === 'hue') {
         const h = c.hue;
-        slider.style.background = `linear-gradient(to right, 
-          hsl(${h - 30}, 80%, 50%), 
-          hsl(${h}, 80%, 50%), 
-          hsl(${h + 30}, 80%, 50%))`;
+        slider.style.background = `linear-gradient(to right, hsl(${h - 30}, 80%, 50%), hsl(${h}, 80%, 50%), hsl(${h + 30}, 80%, 50%))`;
       } else if (p.id === 'saturation') {
         const h = c.hue;
-        slider.style.background = `linear-gradient(to right, 
-          hsl(${h}, 0%, 60%), 
-          hsl(${h}, 100%, 50%))`;
+        slider.style.background = `linear-gradient(to right, hsl(${h}, 0%, 60%), hsl(${h}, 100%, 50%))`;
       } else if (p.id === 'luminance') {
         const h = c.hue;
-        slider.style.background = `linear-gradient(to right, 
-          hsl(${h}, 80%, 20%), 
-          hsl(${h}, 80%, 50%), 
-          hsl(${h}, 80%, 80%))`;
+        slider.style.background = `linear-gradient(to right, hsl(${h}, 80%, 20%), hsl(${h}, 80%, 50%), hsl(${h}, 80%, 80%))`;
       }
 
       const valEl = document.createElement('span');
@@ -164,6 +161,60 @@
       hslGrid.appendChild(cell);
 
       hslInputs[c.name][p.id] = slider;
+    });
+  });
+
+  // Build Posterization Grid
+  const postInputs = {};
+  HSL_COLORS.forEach(c => { postInputs[c.name] = {}; });
+
+  postGrid.appendChild(document.createElement('div'));
+  POSTERIZATION_PARAMS.forEach(p => {
+    const header = document.createElement('div');
+    header.className = 'hsl-header';
+    header.textContent = p.label;
+    postGrid.appendChild(header);
+  });
+
+  HSL_COLORS.forEach(c => {
+    const rowLabel = document.createElement('div');
+    rowLabel.className = 'hsl-row-label';
+    rowLabel.textContent = c.name;
+    postGrid.appendChild(rowLabel);
+
+    POSTERIZATION_PARAMS.forEach(p => {
+      const cell = document.createElement('div');
+      cell.className = 'hsl-cell';
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'hsl-slider';
+      slider.min = '0';
+      slider.max = '100';
+      slider.step = '1';
+      slider.value = '0';
+      slider.setAttribute('aria-label', `${c.name} ${p.label}`);
+
+      const h = c.hue;
+      if (p.id === 'highlights') {
+        slider.style.background = `linear-gradient(to right, hsl(${h}, 15%, 60%), hsl(${h}, 80%, 70%))`;
+      } else if (p.id === 'shadows') {
+        slider.style.background = `linear-gradient(to right, hsl(${h}, 15%, 40%), hsl(${h}, 80%, 30%))`;
+      }
+
+      const valEl = document.createElement('span');
+      valEl.className = 'hsl-val';
+      valEl.textContent = '0';
+
+      slider.addEventListener('input', () => {
+        valEl.textContent = slider.value;
+      });
+
+      cell.appendChild(slider);
+      cell.appendChild(valEl);
+      postGrid.appendChild(cell);
+
+      postInputs[c.name][p.id] = slider;
     });
   });
 
@@ -187,12 +238,25 @@
     });
     out.hslIdentity = hslIdentity;
 
+    out.post = {};
+    let postIdentity = true;
+    HSL_COLORS.forEach(c => {
+      out.post[c.name] = {};
+      POSTERIZATION_PARAMS.forEach(p => {
+        const v = parseFloat(postInputs[c.name][p.id].value);
+        const val = isNaN(v) ? 0 : Math.max(0, Math.min(100, Math.round(v)));
+        out.post[c.name][p.id] = val;
+        if (val !== 0) postIdentity = false;
+      });
+    });
+    out.postIdentity = postIdentity;
+
     return out;
   }
 
   function isIdentity(values) {
     const baseIdentity = CONTROLS.every(cfg => values[cfg.id] === 0);
-    return baseIdentity && values.hslIdentity;
+    return baseIdentity && values.hslIdentity && values.postIdentity;
   }
 
   // Color space conversion
@@ -348,6 +412,10 @@
     if (!values.hslIdentity) {
       applyHsl(data, values.hsl);
     }
+    
+    if (!values.postIdentity) {
+      applyPosterization(data, values.post);
+    }
   }
 
   function applyClarity(data, w, h, amount) {
@@ -390,21 +458,17 @@
       const r = data[i], g = data[i + 1], b = data[i + 2];
       let [h, s, l] = rgbToHsl(r, g, b);
       
-      // Skip fully desaturated pixels for HSL color mixing
       if (s === 0) continue;
       
       let hueShift = 0;
       let satShift = 0;
       let lumShift = 0;
       
-      // Blend weights based on hue distance
       HSL_COLORS.forEach(c => {
         const targetHue = c.hue;
-        // Calculate shortest hue distance
         let dist = Math.abs(h - targetHue);
         if (dist > 180) dist = 360 - dist;
         
-        // Influence falls off within 30 degrees, overlapping slightly
         const influence = Math.max(0, 1 - (dist / 30));
         
         if (influence > 0) {
@@ -420,6 +484,50 @@
         l = Math.min(1, Math.max(0, l + lumShift));
         
         const [nr, ng, nb] = hslToRgb(h, s, l);
+        data[i] = nr;
+        data[i + 1] = ng;
+        data[i + 2] = nb;
+      }
+    }
+  }
+
+  function applyPosterization(data, postValues) {
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const [h, s, l] = rgbToHsl(r, g, b);
+      
+      if (s === 0) continue;
+
+      let hlShift = 0;
+      let shShift = 0;
+
+      HSL_COLORS.forEach(c => {
+        const targetHue = c.hue;
+        let dist = Math.abs(h - targetHue);
+        if (dist > 180) dist = 360 - dist;
+        
+        const influence = Math.max(0, 1 - (dist / 30));
+        
+        if (influence > 0) {
+          hlShift += (postValues[c.name].highlights / 100) * influence;
+          shShift += (postValues[c.name].shadows / 100) * influence;
+        }
+      });
+
+      if (hlShift !== 0 || shShift !== 0) {
+        let newL = l;
+        let newS = s;
+        if (l > 0.5) {
+          newL += hlShift * 0.5 * (l - 0.5) * 2;
+          newS += hlShift * 0.5;
+        } else {
+          newL -= shShift * 0.5 * (0.5 - l) * 2;
+          newS += shShift * 0.5;
+        }
+        newL = Math.min(1, Math.max(0, newL));
+        newS = Math.min(1, Math.max(0, newS));
+        
+        const [nr, ng, nb] = hslToRgb(h, newS, newL);
         data[i] = nr;
         data[i + 1] = ng;
         data[i + 2] = nb;
@@ -558,6 +666,20 @@
   hslModal.addEventListener('click', (e) => {
     if (e.target === hslModal) {
       hslModal.classList.add('hidden');
+    }
+  });
+
+  postBtn.addEventListener('click', () => {
+    postModal.classList.remove('hidden');
+  });
+
+  closePostBtn.addEventListener('click', () => {
+    postModal.classList.add('hidden');
+  });
+
+  postModal.addEventListener('click', (e) => {
+    if (e.target === postModal) {
+      postModal.classList.add('hidden');
     }
   });
 
