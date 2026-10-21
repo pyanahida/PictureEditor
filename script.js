@@ -26,6 +26,21 @@
     vibrance:   { scale: 0.8 }
   };
 
+  const HSL_COLORS = [
+    { name: 'red',    hue: 0 },
+    { name: 'orange', hue: 30 },
+    { name: 'yellow', hue: 60 },
+    { name: 'green',  hue: 120 },
+    { name: 'blue',   hue: 240 },
+    { name: 'purple', hue: 280 }
+  ];
+
+  const HSL_PARAMS = [
+    { id: 'hue',        label: 'hue' },
+    { id: 'saturation', label: 'saturation' },
+    { id: 'luminance',  label: 'luminance' }
+  ];
+
   const fileInput   = document.getElementById('file-input');
   const previewImg  = document.getElementById('preview-img');
   const placeholder = document.getElementById('placeholder');
@@ -34,13 +49,18 @@
   const applyBtn    = document.getElementById('apply-btn');
   const downloadBtn = document.getElementById('download-btn');
   const controlsEl  = document.getElementById('controls');
+  
+  const hslBtn      = document.getElementById('hsl-btn');
+  const hslModal    = document.getElementById('hsl-modal');
+  const closeHslBtn = document.getElementById('close-hsl');
+  const hslGrid     = document.getElementById('hsl-grid');
 
   let originalImage = null;
   let originalFile  = null;
   let currentObjectUrl = null;
   let processedDataUrl = null;
 
-  // Build controls
+  // Build basic controls
   const inputs = {};
   CONTROLS.forEach(cfg => {
     const row = document.createElement('div');
@@ -76,17 +96,103 @@
     inputs[cfg.id] = slider;
   });
 
+  // Build HSL Grid
+  const hslInputs = {};
+  HSL_COLORS.forEach(c => { hslInputs[c.name] = {}; });
+  
+  // Headers
+  hslGrid.appendChild(document.createElement('div')); // empty corner
+  HSL_COLORS.forEach(c => {
+    const header = document.createElement('div');
+    header.className = 'hsl-header';
+    header.textContent = c.name;
+    hslGrid.appendChild(header);
+  });
+
+  // Rows
+  HSL_PARAMS.forEach(p => {
+    // Row label
+    const rowLabel = document.createElement('div');
+    rowLabel.className = 'hsl-row-label';
+    rowLabel.textContent = p.label;
+    hslGrid.appendChild(rowLabel);
+
+    // Cells
+    HSL_COLORS.forEach(c => {
+      const cell = document.createElement('div');
+      cell.className = 'hsl-cell';
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'hsl-slider';
+      slider.min = '-100';
+      slider.max = '100';
+      slider.step = '1';
+      slider.value = '0';
+      slider.setAttribute('aria-label', `${c.name} ${p.label}`);
+
+      // Set gradient background based on row and color
+      if (p.id === 'hue') {
+        const h = c.hue;
+        slider.style.background = `linear-gradient(to right, 
+          hsl(${h - 30}, 80%, 50%), 
+          hsl(${h}, 80%, 50%), 
+          hsl(${h + 30}, 80%, 50%))`;
+      } else if (p.id === 'saturation') {
+        const h = c.hue;
+        slider.style.background = `linear-gradient(to right, 
+          hsl(${h}, 0%, 60%), 
+          hsl(${h}, 100%, 50%))`;
+      } else if (p.id === 'luminance') {
+        const h = c.hue;
+        slider.style.background = `linear-gradient(to right, 
+          hsl(${h}, 80%, 20%), 
+          hsl(${h}, 80%, 50%), 
+          hsl(${h}, 80%, 80%))`;
+      }
+
+      const valEl = document.createElement('span');
+      valEl.className = 'hsl-val';
+      valEl.textContent = '0';
+
+      slider.addEventListener('input', () => {
+        valEl.textContent = slider.value;
+      });
+
+      cell.appendChild(slider);
+      cell.appendChild(valEl);
+      hslGrid.appendChild(cell);
+
+      hslInputs[c.name][p.id] = slider;
+    });
+  });
+
   function readValues() {
     const out = {};
     CONTROLS.forEach(cfg => {
       const v = parseFloat(inputs[cfg.id].value);
       out[cfg.id] = isNaN(v) ? 0 : Math.max(-100, Math.min(100, Math.round(v)));
     });
+    
+    out.hsl = {};
+    let hslIdentity = true;
+    HSL_COLORS.forEach(c => {
+      out.hsl[c.name] = {};
+      HSL_PARAMS.forEach(p => {
+        const v = parseFloat(hslInputs[c.name][p.id].value);
+        const val = isNaN(v) ? 0 : Math.max(-100, Math.min(100, Math.round(v)));
+        out.hsl[c.name][p.id] = val;
+        if (val !== 0) hslIdentity = false;
+      });
+    });
+    out.hslIdentity = hslIdentity;
+
     return out;
   }
 
   function isIdentity(values) {
-    return CONTROLS.every(cfg => values[cfg.id] === 0);
+    const baseIdentity = CONTROLS.every(cfg => values[cfg.id] === 0);
+    return baseIdentity && values.hslIdentity;
   }
 
   // Color space conversion
@@ -97,6 +203,50 @@
   function linearToSrgb(v) {
     const c = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
     return Math.min(255, Math.max(0, c * 255));
+  }
+
+  // HSL conversion helpers
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+
+    if (max === min) {
+      h = s = 0;
+    } else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return [h * 360, s, l];
+  }
+
+  function hslToRgb(h, s, l) {
+    h /= 360;
+    let r, g, b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
   }
 
   // Pixel processing
@@ -194,6 +344,10 @@
     if (values.saturation !== 0 || values.vibrance !== 0) {
       applySaturation(data, satF, vibAmount);
     }
+    
+    if (!values.hslIdentity) {
+      applyHsl(data, values.hsl);
+    }
   }
 
   function applyClarity(data, w, h, amount) {
@@ -231,6 +385,48 @@
     }
   }
 
+  function applyHsl(data, hslValues) {
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      let [h, s, l] = rgbToHsl(r, g, b);
+      
+      // Skip fully desaturated pixels for HSL color mixing
+      if (s === 0) continue;
+      
+      let hueShift = 0;
+      let satShift = 0;
+      let lumShift = 0;
+      
+      // Blend weights based on hue distance
+      HSL_COLORS.forEach(c => {
+        const targetHue = c.hue;
+        // Calculate shortest hue distance
+        let dist = Math.abs(h - targetHue);
+        if (dist > 180) dist = 360 - dist;
+        
+        // Influence falls off within 30 degrees, overlapping slightly
+        const influence = Math.max(0, 1 - (dist / 30));
+        
+        if (influence > 0) {
+          hueShift += (hslValues[c.name].hue / 100) * 30 * influence;
+          satShift += (hslValues[c.name].saturation / 100) * influence;
+          lumShift += (hslValues[c.name].luminance / 100) * 0.5 * influence;
+        }
+      });
+      
+      if (hueShift !== 0 || satShift !== 0 || lumShift !== 0) {
+        h = (h + hueShift + 360) % 360;
+        s = Math.min(1, Math.max(0, s + satShift));
+        l = Math.min(1, Math.max(0, l + lumShift));
+        
+        const [nr, ng, nb] = hslToRgb(h, s, l);
+        data[i] = nr;
+        data[i + 1] = ng;
+        data[i + 2] = nb;
+      }
+    }
+  }
+
   // Apply effects
   function applyNow() {
     if (!originalImage) return;
@@ -238,7 +434,6 @@
     applyBtn.disabled = true;
     applyBtn.textContent = 'processing...';
 
-    // Delay execution to let UI update
     setTimeout(() => {
       try {
         const nw = originalImage.naturalWidth;
@@ -296,7 +491,7 @@
   function handleFileChange(e) {
     const files = e.target.files;
     if (!files || files.length === 0) {
-      return; // If the user cancels selection, keep current state without clearing
+      return;
     }
     const file = files[0];
 
@@ -310,21 +505,17 @@
     const name = file.name;
     filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
 
-    // Thoroughly clean up old image
     if (currentObjectUrl) {
       URL.revokeObjectURL(currentObjectUrl);
     }
 
-    // Use the most stable URL.createObjectURL
     currentObjectUrl = URL.createObjectURL(file);
 
-    // 1. Assign directly to img for immediate display
     previewImg.src = currentObjectUrl;
     previewImg.classList.remove('hidden');
     placeholder.classList.add('hidden');
     previewBox.classList.add('active');
 
-    // 2. Create Image object for Canvas processing
     originalImage = new Image();
     originalImage.onload = function() {
       applyBtn.disabled = false;
@@ -336,7 +527,6 @@
       filenameEl.textContent = 'failed to load image';
     };
     
-    // Note: Never revoke currentObjectUrl here until next image selection or page unload
     originalImage.src = currentObjectUrl;
   }
 
@@ -356,8 +546,22 @@
     document.body.removeChild(a);
   }
 
+  // Modal logic
+  hslBtn.addEventListener('click', () => {
+    hslModal.classList.remove('hidden');
+  });
+
+  closeHslBtn.addEventListener('click', () => {
+    hslModal.classList.add('hidden');
+  });
+
+  hslModal.addEventListener('click', (e) => {
+    if (e.target === hslModal) {
+      hslModal.classList.add('hidden');
+    }
+  });
+
   // Bind events
-  // Never add fileInput.addEventListener('click', () => this.value = ''), it will freeze mobile devices after canceling selection
   fileInput.addEventListener('change', handleFileChange);
   applyBtn.addEventListener('click', applyNow);
   downloadBtn.addEventListener('click', downloadImage);
