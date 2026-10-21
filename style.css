@@ -176,7 +176,7 @@ body {
 .button-row {
   display: flex;
   gap: 0.5rem;
-  margin-top: 1.5rem;
+  margin-top: 1rem;
 }
 
 .action-btn {
@@ -272,7 +272,7 @@ body {
   display: grid;
   grid-template-columns: auto repeat(6, 1fr);
   gap: 1rem;
-  min-width: 600px; /* Ensure it doesn't squish too much on mobile */
+  min-width: 600px;
 }
 
 .hsl-header {
