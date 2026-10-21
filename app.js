@@ -157,13 +157,20 @@
 
   function savePreset() {
     const values = window.UI.getValues();
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(values, null, 2));
+    const jsonStr = JSON.stringify(values, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
     const a = document.createElement('a');
-    a.href = dataStr;
+    a.href = url;
     a.download = 'picture-editor-preset.json';
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
   }
 
   function loadPreset(e) {
