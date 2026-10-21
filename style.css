@@ -233,6 +233,7 @@ body {
   max-width: 800px;
   max-height: 90vh;
   overflow-y: auto;
+  overflow-x: auto;
   padding: 1.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
@@ -264,9 +265,9 @@ body {
 
 .hsl-grid {
   display: grid;
-  grid-template-columns: auto repeat(6, 1fr);
+  grid-template-columns: auto repeat(6, minmax(90px, 1fr));
   gap: 1rem;
-  min-width: 600px;
+  min-width: max-content;
 }
 
 .hsl-header {
@@ -275,6 +276,7 @@ body {
   color: var(--muted);
   text-align: center;
   padding-bottom: 0.5rem;
+  white-space: nowrap;
 }
 
 .hsl-row-label {
@@ -285,6 +287,7 @@ body {
   align-items: center;
   justify-content: flex-end;
   padding-right: 0.5rem;
+  white-space: nowrap;
 }
 
 .hsl-cell {
@@ -292,6 +295,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 0.3rem;
+  min-width: 90px;
 }
 
 .hsl-slider {
