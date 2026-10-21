@@ -101,11 +101,12 @@ body {
   height: auto;
   display: block;
   border-radius: 12px;
-  border: 1px solid #888; /* 强制边框，防止极小图片或透明图片在暗色背景下隐身 */
-  background: #fff;       /* 提供白色背景，确保深色图片清晰可见 */
-  min-width: 50px;        /* 防止极小图片缩成不可见的点 */
+  border: 1px solid #888; /* force border to prevent tiny or transparent images from blending into dark backgrounds */
+  background: #fff;       /* provide white background to ensure dark images are clearly visible */
+  min-width: 50px;        /* prevent tiny images from shrinking into an invisible dot */
   min-height: 50px;
 }
+
 .preview img.hidden {
   display: none;
 }
