@@ -97,7 +97,6 @@
     const table = document.createElement('table');
     table.className = 'param-table';
     
-    // Header row
     const thead = document.createElement('thead');
     const trHead = document.createElement('tr');
     trHead.appendChild(document.createElement('th'));
@@ -109,7 +108,6 @@
     thead.appendChild(trHead);
     table.appendChild(thead);
 
-    // Body
     const tbody = document.createElement('tbody');
     HSL_PARAMS.forEach(p => {
       const tr = document.createElement('tr');
@@ -452,11 +450,58 @@
                         pts[0].x === 0 && pts[0].y === 0 && 
                         pts[1].x === 255 && pts[1].y === 255;
       if (!isDefault) curvesIdentity = false;
-      out.curves[c.id] = pts;
+      out.curves[c.id] = JSON.parse(JSON.stringify(pts));
     });
     out.curvesIdentity = curvesIdentity;
 
     return out;
+  }
+
+  function loadValues(data) {
+    CONTROLS.forEach(cfg => {
+      if (data[cfg.id] !== undefined) {
+        const val = Math.max(-100, Math.min(100, data[cfg.id]));
+        inputs[cfg.id].value = val;
+        inputs[cfg.id].nextElementSibling.textContent = val;
+      }
+    });
+
+    if (data.hsl) {
+      HSL_COLORS.forEach(c => {
+        if (data.hsl[c.name]) {
+          HSL_PARAMS.forEach(p => {
+            if (data.hsl[c.name][p.id] !== undefined) {
+              const val = Math.max(-100, Math.min(100, data.hsl[c.name][p.id]));
+              hslInputs[c.name][p.id].value = val;
+              hslInputs[c.name][p.id].nextElementSibling.textContent = val;
+            }
+          });
+        }
+      });
+    }
+
+    if (data.post) {
+      HSL_COLORS.forEach(c => {
+        if (data.post[c.name]) {
+          POSTERIZATION_PARAMS.forEach(p => {
+            if (data.post[c.name][p.id] !== undefined) {
+              const val = Math.max(0, Math.min(100, data.post[c.name][p.id]));
+              postInputs[c.name][p.id].value = val;
+              postInputs[c.name][p.id].nextElementSibling.textContent = val;
+            }
+          });
+        }
+      });
+    }
+
+    if (data.curves) {
+      CURVE_CHANNELS.forEach(c => {
+        if (data.curves[c.id] && Array.isArray(data.curves[c.id])) {
+          curvesState[c.id] = data.curves[c.id];
+        }
+      });
+      redrawAllCurves();
+    }
   }
 
   function isIdentity(values) {
@@ -471,6 +516,7 @@
     buildCurves,
     deleteSelectedPoint,
     getValues,
+    loadValues,
     isIdentity
   };
 
