@@ -45,7 +45,6 @@
   const hslInputs = {};
   const postInputs = {};
   
-  // Curve state
   const curvesState = {
     w: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
     r: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
@@ -95,24 +94,32 @@
   function buildHslGrid(container) {
     HSL_COLORS.forEach(c => { hslInputs[c.name] = {}; });
     
-    container.appendChild(document.createElement('div'));
+    const table = document.createElement('table');
+    table.className = 'param-table';
+    
+    // Header row
+    const thead = document.createElement('thead');
+    const trHead = document.createElement('tr');
+    trHead.appendChild(document.createElement('th'));
     HSL_COLORS.forEach(c => {
-      const header = document.createElement('div');
-      header.className = 'hsl-header';
-      header.textContent = c.name;
-      container.appendChild(header);
+      const th = document.createElement('th');
+      th.textContent = c.name;
+      trHead.appendChild(th);
     });
+    thead.appendChild(trHead);
+    table.appendChild(thead);
 
+    // Body
+    const tbody = document.createElement('tbody');
     HSL_PARAMS.forEach(p => {
-      const rowLabel = document.createElement('div');
-      rowLabel.className = 'hsl-row-label';
-      rowLabel.textContent = p.label;
-      container.appendChild(rowLabel);
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.textContent = p.label;
+      tr.appendChild(th);
 
       HSL_COLORS.forEach(c => {
-        const cell = document.createElement('div');
-        cell.className = 'hsl-cell';
-
+        const td = document.createElement('td');
+        
         const slider = document.createElement('input');
         slider.type = 'range';
         slider.className = 'hsl-slider';
@@ -140,35 +147,44 @@
           valEl.textContent = slider.value;
         });
 
-        cell.appendChild(slider);
-        cell.appendChild(valEl);
-        container.appendChild(cell);
+        td.appendChild(slider);
+        td.appendChild(valEl);
+        tr.appendChild(td);
 
         hslInputs[c.name][p.id] = slider;
       });
+      tbody.appendChild(tr);
     });
+    table.appendChild(tbody);
+    container.appendChild(table);
   }
 
   function buildPostGrid(container) {
     HSL_COLORS.forEach(c => { postInputs[c.name] = {}; });
 
-    container.appendChild(document.createElement('div'));
+    const table = document.createElement('table');
+    table.className = 'param-table';
+    
+    const thead = document.createElement('thead');
+    const trHead = document.createElement('tr');
+    trHead.appendChild(document.createElement('th'));
     POSTERIZATION_PARAMS.forEach(p => {
-      const header = document.createElement('div');
-      header.className = 'hsl-header';
-      header.textContent = p.label;
-      container.appendChild(header);
+      const th = document.createElement('th');
+      th.textContent = p.label;
+      trHead.appendChild(th);
     });
+    thead.appendChild(trHead);
+    table.appendChild(thead);
 
+    const tbody = document.createElement('tbody');
     HSL_COLORS.forEach(c => {
-      const rowLabel = document.createElement('div');
-      rowLabel.className = 'hsl-row-label';
-      rowLabel.textContent = c.name;
-      container.appendChild(rowLabel);
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.textContent = c.name;
+      tr.appendChild(th);
 
       POSTERIZATION_PARAMS.forEach(p => {
-        const cell = document.createElement('div');
-        cell.className = 'hsl-cell';
+        const td = document.createElement('td');
 
         const slider = document.createElement('input');
         slider.type = 'range';
@@ -193,13 +209,16 @@
           valEl.textContent = slider.value;
         });
 
-        cell.appendChild(slider);
-        cell.appendChild(valEl);
-        container.appendChild(cell);
+        td.appendChild(slider);
+        td.appendChild(valEl);
+        tr.appendChild(td);
 
         postInputs[c.name][p.id] = slider;
       });
+      tbody.appendChild(tr);
     });
+    table.appendChild(tbody);
+    container.appendChild(table);
   }
 
   function buildCurves(container, deleteBtn) {
@@ -270,18 +289,14 @@
       let idx = findPoint(pos);
 
       if (idx === -1) {
-        // Add new point
         const newX = Math.round((pos.x / SIZE) * 255);
         const newY = Math.round(255 - (pos.y / SIZE) * 255);
         
-        // Clamp between existing points to maintain order
         const pts = curvesState[channel].slice();
         let insertIdx = pts.findIndex(p => p.x > newX);
         if (insertIdx === -1) insertIdx = pts.length;
         
-        // Don't add exactly on endpoint or too close to other points
         if (newX > pts[0].x && newX < pts[pts.length - 1].x) {
-          // Check distance to neighbors in x
           const left = pts[insertIdx - 1];
           const right = pts[insertIdx];
           if (newX - left.x > 3 && right.x - newX > 3) {
@@ -313,7 +328,6 @@
       const pts = curvesState[channel];
       if (dragIndex < 0 || dragIndex >= pts.length) return;
 
-      // Vertical drag only (x stays same)
       let newY = Math.round(255 - (pos.y / SIZE) * 255);
       newY = Math.max(0, Math.min(255, newY));
       pts[dragIndex].y = newY;
@@ -346,7 +360,6 @@
 
       ctx.clearRect(0, 0, SIZE, SIZE);
 
-      // Draw grid
       ctx.strokeStyle = 'rgba(128, 128, 128, 0.2)';
       ctx.lineWidth = 1;
       for (let i = 1; i < 4; i++) {
@@ -355,7 +368,6 @@
         ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(SIZE, p); ctx.stroke();
       }
 
-      // Draw line
       ctx.beginPath();
       const sortedPts = [...pts].sort((a, b) => a.x - b.x);
       for (let i = 0; i < SIZE; i++) {
@@ -375,7 +387,6 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Draw points
       pts.forEach((pt, i) => {
         const px = (pt.x / 255) * SIZE;
         const py = SIZE - (pt.y / 255) * SIZE;
@@ -437,7 +448,6 @@
     let curvesIdentity = true;
     CURVE_CHANNELS.forEach(c => {
       const pts = curvesState[c.id];
-      // Check if it's the default straight line
       const isDefault = pts.length === 2 && 
                         pts[0].x === 0 && pts[0].y === 0 && 
                         pts[1].x === 255 && pts[1].y === 255;
