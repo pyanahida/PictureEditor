@@ -262,42 +262,36 @@ body {
   color: var(--text);
 }
 
-/* 修复网格错位问题：只让网格容器出现横向滚动 */
-.hsl-grid {
-  display: grid;
-  grid-template-columns: auto repeat(6, minmax(80px, 1fr));
-  gap: 1rem;
-  min-width: max-content;
-  overflow-x: auto;
-  padding-bottom: 0.5rem;
+/* 原生 Table 布局样式，彻底告别错位 */
+.param-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0.5rem;
+  min-width: 600px;
 }
 
-.hsl-header {
+.param-table th {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--muted);
   text-align: center;
-  padding-bottom: 0.5rem;
   white-space: nowrap;
+  padding: 0.2rem;
 }
 
-.hsl-row-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 0.5rem;
-  white-space: nowrap;
-}
-
-.hsl-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.3rem;
+.param-table td {
+  text-align: center;
   min-width: 80px;
+  vertical-align: middle;
+}
+
+/* 让包含表格的 div 出现横向滚动条 */
+#hsl-grid, #posterization-grid {
+  width: 100%;
+  overflow-x: auto;
+  margin: 0 -1.5rem;
+  padding: 0 1.5rem;
+  width: auto;
 }
 
 .hsl-slider {
@@ -308,6 +302,8 @@ body {
   border-radius: 3px;
   outline: none;
   cursor: pointer;
+  display: block;
+  margin-bottom: 0.3rem;
 }
 
 .hsl-slider::-webkit-slider-thumb {
@@ -336,6 +332,7 @@ body {
   font-size: 0.7rem;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  display: block;
 }
 
 /* Curves */
