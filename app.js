@@ -22,12 +22,15 @@
   const closeCurvesBtn = document.getElementById('close-curves');
   const deletePointBtn = document.getElementById('delete-point-btn');
 
+  const savePresetBtn = document.getElementById('save-preset-btn');
+  const loadPresetBtn = document.getElementById('load-preset-btn');
+  const presetInput   = document.getElementById('preset-input');
+
   let originalImage = null;
   let originalFile  = null;
   let currentObjectUrl = null;
   let processedDataUrl = null;
 
-  // Initialize UI
   window.UI.buildControls(document.getElementById('controls'));
   window.UI.buildHslGrid(document.getElementById('hsl-grid'));
   window.UI.buildPostGrid(document.getElementById('posterization-grid'));
@@ -152,47 +155,52 @@
     document.body.removeChild(a);
   }
 
-  hslBtn.addEventListener('click', () => {
-    hslModal.classList.remove('hidden');
-  });
+  function savePreset() {
+    const values = window.UI.getValues();
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(values, null, 2));
+    const a = document.createElement('a');
+    a.href = dataStr;
+    a.download = 'picture-editor-preset.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 
-  closeHslBtn.addEventListener('click', () => {
-    hslModal.classList.add('hidden');
-  });
+  function loadPreset(e) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  hslModal.addEventListener('click', (e) => {
-    if (e.target === hslModal) {
-      hslModal.classList.add('hidden');
-    }
-  });
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      try {
+        const data = JSON.parse(evt.target.result);
+        window.UI.loadValues(data);
+        filenameEl.textContent = 'preset loaded successfully';
+      } catch (err) {
+        filenameEl.textContent = 'invalid preset file';
+      }
+    };
+    reader.readAsText(file);
+    presetInput.value = '';
+  }
 
-  postBtn.addEventListener('click', () => {
-    postModal.classList.remove('hidden');
+  savePresetBtn.addEventListener('click', savePreset);
+  loadPresetBtn.addEventListener('click', () => {
+    presetInput.click();
   });
+  presetInput.addEventListener('change', loadPreset);
 
-  closePostBtn.addEventListener('click', () => {
-    postModal.classList.add('hidden');
-  });
+  hslBtn.addEventListener('click', () => { hslModal.classList.remove('hidden'); });
+  closeHslBtn.addEventListener('click', () => { hslModal.classList.add('hidden'); });
+  hslModal.addEventListener('click', (e) => { if (e.target === hslModal) hslModal.classList.add('hidden'); });
 
-  postModal.addEventListener('click', (e) => {
-    if (e.target === postModal) {
-      postModal.classList.add('hidden');
-    }
-  });
+  postBtn.addEventListener('click', () => { postModal.classList.remove('hidden'); });
+  closePostBtn.addEventListener('click', () => { postModal.classList.add('hidden'); });
+  postModal.addEventListener('click', (e) => { if (e.target === postModal) postModal.classList.add('hidden'); });
 
-  curvesBtn.addEventListener('click', () => {
-    curvesModal.classList.remove('hidden');
-  });
-
-  closeCurvesBtn.addEventListener('click', () => {
-    curvesModal.classList.add('hidden');
-  });
-
-  curvesModal.addEventListener('click', (e) => {
-    if (e.target === curvesModal) {
-      curvesModal.classList.add('hidden');
-    }
-  });
+  curvesBtn.addEventListener('click', () => { curvesModal.classList.remove('hidden'); });
+  closeCurvesBtn.addEventListener('click', () => { curvesModal.classList.add('hidden'); });
+  curvesModal.addEventListener('click', (e) => { if (e.target === curvesModal) curvesModal.classList.add('hidden'); });
 
   fileInput.addEventListener('change', handleFileChange);
   applyBtn.addEventListener('click', applyNow);
