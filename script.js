@@ -37,14 +37,10 @@
 
   let originalImage = null;
   let originalFile  = null;
-  let rawDataUrl    = null;
+  let currentObjectUrl = null;
   let processedDataUrl = null;
-  let latestRequestId = 0;
 
-  let sharedCanvas = null;
-  let sharedCtx = null;
-
-  // ---- build controls ----
+  // Build controls
   const inputs = {};
   CONTROLS.forEach(cfg => {
     const row = document.createElement('div');
@@ -93,7 +89,7 @@
     return CONTROLS.every(cfg => values[cfg.id] === 0);
   }
 
-  // ---- linear color helpers ----
+  // Color space conversion
   function srgbToLinear(c) {
     const v = c / 255;
     return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
@@ -103,7 +99,7 @@
     return Math.min(255, Math.max(0, c * 255));
   }
 
-  // ---- pipeline ----
+  // Pixel processing
   function processPixels(data, w, h, values) {
     const expF = values.exposure >= 0
       ? 1 + (values.exposure / 100) * PROFILE.exposure.pos
@@ -145,7 +141,6 @@
       let b = srgbToLinear(data[i + 2]);
 
       r *= expF; g *= expF; b *= expF;
-
       r += brightOff; g += brightOff; b += brightOff;
 
       r = (r - 0.5) * contrastF + 0.5;
@@ -236,65 +231,54 @@
     }
   }
 
-  // ---- render ----
-  function getSharedCanvas(w, h) {
-    if (!sharedCanvas) {
-      sharedCanvas = document.createElement('canvas');
-      sharedCtx = sharedCanvas.getContext('2d', { willReadFrequently: true });
-    }
-    if (sharedCanvas.width !== w || sharedCanvas.height !== h) {
-      sharedCanvas.width = w;
-      sharedCanvas.height = h;
-    }
-    return sharedCanvas;
-  }
-
+  // Apply effects
   function applyNow() {
     if (!originalImage) return;
     
-    // Safety timeout for UI feedback (optional but good for large images)
     applyBtn.disabled = true;
     applyBtn.textContent = 'processing...';
 
-    // Use setTimeout to let the UI update before heavy synchronous processing
+    // Delay execution to let UI update
     setTimeout(() => {
       try {
         const nw = originalImage.naturalWidth;
         const nh = originalImage.naturalHeight;
-        if (!nw || !nh) return;
 
-        const canvas = getSharedCanvas(nw, nh);
-        sharedCtx.clearRect(0, 0, nw, nh);
-        sharedCtx.drawImage(originalImage, 0, 0);
+        const canvas = document.createElement('canvas');
+        canvas.width = nw;
+        canvas.height = nh;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) throw new Error('Canvas 2D context unavailable');
+
+        ctx.drawImage(originalImage, 0, 0);
 
         const values = readValues();
         if (!isIdentity(values)) {
-          const imageData = sharedCtx.getImageData(0, 0, nw, nh);
+          const imageData = ctx.getImageData(0, 0, nw, nh);
           processPixels(imageData.data, nw, nh, values);
-          sharedCtx.putImageData(imageData, 0, 0);
+          ctx.putImageData(imageData, 0, 0);
         }
 
         processedDataUrl = canvas.toDataURL('image/png');
         
         previewImg.src = processedDataUrl;
-        previewImg.classList.remove('hidden');
-        placeholder.classList.add('hidden');
-        previewBox.classList.add('active');
         downloadBtn.disabled = false;
       } catch (err) {
-        console.error(err);
         filenameEl.textContent = 'processing error';
       } finally {
         applyBtn.disabled = false;
         applyBtn.textContent = 'apply';
       }
-    }, 10);
+    }, 50);
   }
 
-  // ---- file handling ----
+  // Clear preview
   function clearPreview() {
-    rawDataUrl = null;
-    processedDataUrl = null;
+    if (currentObjectUrl) {
+      URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = null;
+    }
     previewImg.removeAttribute('src');
     previewImg.classList.add('hidden');
     placeholder.classList.remove('hidden');
@@ -302,28 +286,23 @@
     filenameEl.textContent = '';
     originalImage = null;
     originalFile = null;
+    processedDataUrl = null;
     applyBtn.disabled = true;
     downloadBtn.disabled = true;
+    applyBtn.textContent = 'apply';
   }
 
+  // Handle file selection
   function handleFileChange(e) {
     const files = e.target.files;
     if (!files || files.length === 0) {
-      clearPreview();
-      return;
+      return; // If the user cancels selection, keep current state without clearing
     }
     const file = files[0];
 
-    if (file.type === 'image/svg+xml') {
-      clearPreview();
-      filenameEl.textContent = 'svg not supported';
-      fileInput.value = '';
-      return;
-    }
     if (!file.type.startsWith('image/')) {
       clearPreview();
       filenameEl.textContent = 'not an image';
-      fileInput.value = '';
       return;
     }
 
@@ -331,39 +310,37 @@
     const name = file.name;
     filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
 
-    // Use FileReader to create a stable data URL (avoids Blob URL garbage collection issues on mobile)
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-      rawDataUrl = evt.target.result;
-      
-      // Immediately show the raw image
-      previewImg.src = rawDataUrl;
-      previewImg.classList.remove('hidden');
-      placeholder.classList.add('hidden');
-      previewBox.classList.add('active');
+    // Thoroughly clean up old image
+    if (currentObjectUrl) {
+      URL.revokeObjectURL(currentObjectUrl);
+    }
 
-      // Load into an Image object for canvas processing
-      const img = new Image();
-      img.onload = function() {
-        originalImage = img;
-        applyBtn.disabled = false;
-        downloadBtn.disabled = true;
-        processedDataUrl = null;
-      };
-      img.onerror = function() {
-        clearPreview();
-        filenameEl.textContent = 'failed to load image';
-      };
-      img.src = rawDataUrl;
+    // Use the most stable URL.createObjectURL
+    currentObjectUrl = URL.createObjectURL(file);
+
+    // 1. Assign directly to img for immediate display
+    previewImg.src = currentObjectUrl;
+    previewImg.classList.remove('hidden');
+    placeholder.classList.add('hidden');
+    previewBox.classList.add('active');
+
+    // 2. Create Image object for Canvas processing
+    originalImage = new Image();
+    originalImage.onload = function() {
+      applyBtn.disabled = false;
+      downloadBtn.disabled = true;
+      processedDataUrl = null;
     };
-    reader.onerror = function() {
+    originalImage.onerror = function() {
       clearPreview();
-      filenameEl.textContent = 'failed to read file';
+      filenameEl.textContent = 'failed to load image';
     };
-    reader.readAsDataURL(file);
+    
+    // Note: Never revoke currentObjectUrl here until next image selection or page unload
+    originalImage.src = currentObjectUrl;
   }
 
-  // ---- download ----
+  // Download image
   function downloadImage() {
     if (!processedDataUrl) return;
     
@@ -379,10 +356,8 @@
     document.body.removeChild(a);
   }
 
-  // ---- events ----
-  fileInput.addEventListener('click', function() {
-    this.value = '';
-  });
+  // Bind events
+  // Never add fileInput.addEventListener('click', () => this.value = ''), it will freeze mobile devices after canceling selection
   fileInput.addEventListener('change', handleFileChange);
   applyBtn.addEventListener('click', applyNow);
   downloadBtn.addEventListener('click', downloadImage);
