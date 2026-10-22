@@ -158,6 +158,35 @@ body {
   height: 4px;
   accent-color: var(--accent);
   cursor: pointer;
+  border-radius: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Specific styling for colored sliders */
+.color-slider {
+  height: 8px;
+  border-radius: 4px;
+}
+.color-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.color-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
 .control-value {
@@ -173,6 +202,20 @@ body {
   display: flex;
   gap: 0.5rem;
   margin-top: 1rem;
+  align-items: center;
+}
+
+.jpeg-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+}
+
+.jpeg-row .action-btn {
+  flex: 0 0 auto;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
 }
 
 .action-btn {
@@ -262,7 +305,6 @@ body {
   color: var(--text);
 }
 
-/* 原生 Table 布局样式，彻底告别错位 */
 .param-table {
   width: 100%;
   border-collapse: separate;
@@ -285,7 +327,6 @@ body {
   vertical-align: middle;
 }
 
-/* 让包含表格的 div 出现横向滚动条 */
 #hsl-grid, #posterization-grid {
   width: 100%;
   overflow-x: auto;
@@ -335,7 +376,6 @@ body {
   display: block;
 }
 
-/* Curves */
 .curves-container {
   display: flex;
   flex-direction: column;
