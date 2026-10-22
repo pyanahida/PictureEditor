@@ -11,7 +11,9 @@
     { id: 'whites',     label: 'whites' },
     { id: 'blacks',     label: 'blacks' },
     { id: 'saturation', label: 'saturation' },
-    { id: 'vibrance',   label: 'vibrance' }
+    { id: 'vibrance',   label: 'vibrance' },
+    { id: 'temp',       label: 'temp', isColor: true, gradient: 'linear-gradient(to right, #3b82f6, #9ca3af, #eab308)' },
+    { id: 'tint',       label: 'tint', isColor: true, gradient: 'linear-gradient(to right, #22c55e, #9ca3af, #ef4444)' }
   ];
 
   const HSL_COLORS = [
@@ -69,11 +71,15 @@
       const slider = document.createElement('input');
       slider.type = 'range';
       slider.id = `ctrl-${cfg.id}`;
-      slider.className = 'control-slider';
+      slider.className = 'control-slider' + (cfg.isColor ? ' color-slider' : '');
       slider.min = '-100';
       slider.max = '100';
       slider.step = '1';
       slider.value = '0';
+
+      if (cfg.gradient) {
+        slider.style.background = cfg.gradient;
+      }
 
       const valueEl = document.createElement('span');
       valueEl.className = 'control-value';
@@ -458,6 +464,8 @@
   }
 
   function loadValues(data) {
+    if (!data) return;
+
     CONTROLS.forEach(cfg => {
       if (data[cfg.id] !== undefined) {
         const val = Math.max(-100, Math.min(100, data[cfg.id]));
