@@ -9,6 +9,10 @@
   const applyBtn    = document.getElementById('apply-btn');
   const downloadBtn = document.getElementById('download-btn');
   
+  const jpegQualityInput = document.getElementById('jpeg-quality');
+  const jpegQualityVal   = document.getElementById('jpeg-quality-val');
+  const downloadJpegBtn  = document.getElementById('download-jpeg-btn');
+
   const hslBtn      = document.getElementById('hsl-btn');
   const hslModal    = document.getElementById('hsl-modal');
   const closeHslBtn = document.getElementById('close-hsl');
@@ -28,7 +32,6 @@
 
   let originalImage = null;
   let originalFile  = null;
-  let currentObjectUrl = null;
   let processedDataUrl = null;
 
   window.UI.buildControls(document.getElementById('controls'));
@@ -40,23 +43,36 @@
     window.UI.deleteSelectedPoint();
   });
 
+  jpegQualityInput.addEventListener('input', () => {
+    jpegQualityVal.textContent = jpegQualityInput.value;
+  });
+
   function applyNow() {
     if (!originalImage) return;
     
     applyBtn.disabled = true;
     applyBtn.textContent = 'processing...';
+    filenameEl.textContent = 'processing...';
 
     setTimeout(() => {
       try {
         const nw = originalImage.naturalWidth;
         const nh = originalImage.naturalHeight;
 
+        if (!nw || !nh) {
+          throw new Error('Image not ready');
+        }
+
+        if (nw * nh > 40000000) {
+          throw new Error('Image too large to process');
+        }
+
         const canvas = document.createElement('canvas');
         canvas.width = nw;
         canvas.height = nh;
         const ctx = canvas.getContext('2d');
         
-        if (!ctx) throw new Error('Canvas 2D context unavailable');
+        if (!ctx) throw new Error('Canvas unavailable');
 
         ctx.drawImage(originalImage, 0, 0);
 
@@ -71,8 +87,13 @@
         
         previewImg.src = processedDataUrl;
         downloadBtn.disabled = false;
+        downloadJpegBtn.disabled = false;
+        
+        const name = originalFile ? originalFile.name : 'image';
+        filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
       } catch (err) {
-        filenameEl.textContent = 'processing error';
+        console.error(err);
+        filenameEl.textContent = 'error: ' + err.message;
       } finally {
         applyBtn.disabled = false;
         applyBtn.textContent = 'apply';
@@ -81,10 +102,6 @@
   }
 
   function clearPreview() {
-    if (currentObjectUrl) {
-      URL.revokeObjectURL(currentObjectUrl);
-      currentObjectUrl = null;
-    }
     previewImg.removeAttribute('src');
     previewImg.classList.add('hidden');
     placeholder.classList.remove('hidden');
@@ -95,6 +112,7 @@
     processedDataUrl = null;
     applyBtn.disabled = true;
     downloadBtn.disabled = true;
+    downloadJpegBtn.disabled = true;
     applyBtn.textContent = 'apply';
   }
 
@@ -113,31 +131,39 @@
 
     originalFile = file;
     const name = file.name;
-    filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
+    filenameEl.textContent = 'loading...';
 
-    if (currentObjectUrl) {
-      URL.revokeObjectURL(currentObjectUrl);
-    }
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const dataUrl = evt.target.result;
+      
+      previewImg.src = dataUrl;
+      previewImg.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+      previewBox.classList.add('active');
 
-    currentObjectUrl = URL.createObjectURL(file);
-
-    previewImg.src = currentObjectUrl;
-    previewImg.classList.remove('hidden');
-    placeholder.classList.add('hidden');
-    previewBox.classList.add('active');
-
-    originalImage = new Image();
-    originalImage.onload = function() {
-      applyBtn.disabled = false;
-      downloadBtn.disabled = true;
-      processedDataUrl = null;
-    };
-    originalImage.onerror = function() {
-      clearPreview();
-      filenameEl.textContent = 'failed to load image';
+      originalImage = new Image();
+      originalImage.onload = function() {
+        applyBtn.disabled = false;
+        downloadBtn.disabled = true;
+        downloadJpegBtn.disabled = true;
+        processedDataUrl = null;
+        filenameEl.textContent = name.length > 40 ? name.slice(0, 38) + '…' : name;
+      };
+      originalImage.onerror = function() {
+        clearPreview();
+        filenameEl.textContent = 'failed to load image';
+      };
+      
+      originalImage.src = dataUrl;
     };
     
-    originalImage.src = currentObjectUrl;
+    reader.onerror = function() {
+      clearPreview();
+      filenameEl.textContent = 'failed to read file';
+    };
+    
+    reader.readAsDataURL(file);
   }
 
   function downloadImage() {
@@ -153,6 +179,40 @@
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  }
+
+  function downloadJpeg() {
+    if (!processedDataUrl) return;
+
+    const quality = parseFloat(jpegQualityInput.value) / 100;
+    
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      
+      // Fill white background for transparent PNGs converting to JPEG
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.drawImage(img, 0, 0);
+      
+      const jpegUrl = canvas.toDataURL('image/jpeg', quality);
+      
+      const base = (originalFile && originalFile.name)
+        ? originalFile.name.replace(/\.[^/.]+$/, '')
+        : 'processed';
+        
+      const a = document.createElement('a');
+      a.href = jpegUrl;
+      a.download = base + '-edited.jpg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+    img.src = processedDataUrl;
   }
 
   function savePreset() {
@@ -212,6 +272,7 @@
   fileInput.addEventListener('change', handleFileChange);
   applyBtn.addEventListener('click', applyNow);
   downloadBtn.addEventListener('click', downloadImage);
+  downloadJpegBtn.addEventListener('click', downloadJpeg);
 
   clearPreview();
 })();
