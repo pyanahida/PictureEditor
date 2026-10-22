@@ -36,10 +36,27 @@
     }
 
     for (let i = 0; i < data.length; i += 4) {
-      // Apply RGB curves then White curve
       data[i] = lutW[lutR[data[i]]];
       data[i + 1] = lutW[lutG[data[i + 1]]];
       data[i + 2] = lutW[lutB[data[i + 2]]];
+    }
+  }
+
+  function applyColorBalance(data, temp, tint) {
+    // temp: -100 (blue) to 100 (yellow)
+    // tint: -100 (green) to 100 (magenta/red)
+    const tR = temp > 0 ? (temp / 100) * 50 : 0;
+    const tB = temp < 0 ? (-temp / 100) * 50 : 0;
+    
+    const tiG = tint < 0 ? (-tint / 100) * 50 : 0;
+    const tiR = tint > 0 ? (tint / 100) * 50 : 0;
+
+    if (temp === 0 && tint === 0) return;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] + tR + tiR));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + tiG));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + tB));
     }
   }
 
@@ -136,6 +153,9 @@
     }
     if (values.saturation !== 0 || values.vibrance !== 0) {
       applySaturation(data, satF, vibAmount);
+    }
+    if (values.temp !== 0 || values.tint !== 0) {
+      applyColorBalance(data, values.temp, values.tint);
     }
     
     if (!values.hslIdentity) {
